@@ -3,7 +3,7 @@ import EditNoteIcon from '@mui/icons-material/EditNote'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
 import LockIcon from '@mui/icons-material/Lock'
 
-export type Tool = 'json-editor' | 'json-string-to-json' | 'json-to-json-string' | 'placeholder'
+export type Tool = 'json-editor' | 'json-string-to-json' | 'json-to-json-string' | 'translator' | 'placeholder'
 
 interface ToolbarProps {
   activeTool: Tool
@@ -14,6 +14,7 @@ const tools = [
   { id: 'json-editor' as Tool, name: 'JSON Editor', icon: <EditNoteIcon /> },
   { id: 'json-string-to-json' as Tool, name: 'String → JSON', icon: <LockOpenIcon /> },
   { id: 'json-to-json-string' as Tool, name: 'JSON → String', icon: <LockIcon /> },
+  { id: 'translator' as Tool, name: 'Translator', icon: <EditNoteIcon /> }, // Using EditNoteIcon as placeholder
 ]
 
 export default function Toolbar({ activeTool, onToolChange }: ToolbarProps) {

@@ -4,8 +4,8 @@
   "description": "A toolbox app with multiple developer tools",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "concurrently \"vite\" \"tsc -p tsconfig.electron.json && wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
-    "build": "tsc -p tsconfig.electron.json && vite build",
+    "dev": "node scripts/copy-wllama.mjs && concurrently \"vite\" \"tsc -p tsconfig.electron.json && wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "build": "node scripts/copy-wllama.mjs && tsc -p tsconfig.electron.json && vite build",
     "preview": "vite preview",
     "electron": "electron .",
     "electron:dev": "cross-env NODE_ENV=development electron ."
@@ -41,6 +41,7 @@
     "@mui/icons-material": "^7.3.5",
     "@mui/material": "^7.3.5",
     "@uiw/react-codemirror": "^4.21.21",
+    "@wllama/wllama": "^2.3.6",
     "codemirror": "^6.0.1",
     "monaco-editor": "^0.55.1",
     "react": "^18.2.0",
