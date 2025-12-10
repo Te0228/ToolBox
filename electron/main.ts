@@ -60,6 +60,7 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    icon: path.join(__dirname, isDev ? '../build/icon.png' : '../build/icon.png'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -76,11 +77,41 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
+
+  return mainWindow
+}
+
+// Single instance lock - only allow one instance of the app
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  // If another instance is already running, quit this one
+  app.quit()
+} else {
+  // When someone tries to run a second instance, focus the existing window
+  app.on('second-instance', () => {
+    const windows = BrowserWindow.getAllWindows()
+    if (windows.length > 0) {
+      const mainWindow = windows[0]
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore()
+      }
+      mainWindow.focus()
+    }
+  })
 }
 
 app.whenReady().then(() => {
   createMenu()
   createWindow()
+
+  // Set dock icon for macOS
+  if (process.platform === 'darwin') {
+    const iconPath = path.join(__dirname, '../build/icon.png')
+    if (require('fs').existsSync(iconPath)) {
+      app.dock.setIcon(iconPath)
+    }
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

@@ -2,8 +2,9 @@ import { AppBar, Toolbar as MuiToolbar, Typography, Button, Box } from '@mui/mat
 import EditNoteIcon from '@mui/icons-material/EditNote'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
 import LockIcon from '@mui/icons-material/Lock'
+import HandymanIcon from '@mui/icons-material/Handyman'
 
-export type Tool = 'json-editor' | 'json-string-to-json' | 'json-to-json-string' | 'translator' | 'placeholder'
+export type Tool = 'json-editor' | 'json-string-to-json' | 'json-to-json-string' | 'placeholder'
 
 interface ToolbarProps {
   activeTool: Tool
@@ -14,7 +15,6 @@ const tools = [
   { id: 'json-editor' as Tool, name: 'JSON Editor', icon: <EditNoteIcon /> },
   { id: 'json-string-to-json' as Tool, name: 'String → JSON', icon: <LockOpenIcon /> },
   { id: 'json-to-json-string' as Tool, name: 'JSON → String', icon: <LockIcon /> },
-  { id: 'translator' as Tool, name: 'Translator', icon: <EditNoteIcon /> }, // Using EditNoteIcon as placeholder
 ]
 
 export default function Toolbar({ activeTool, onToolChange }: ToolbarProps) {
@@ -28,8 +28,9 @@ export default function Toolbar({ activeTool, onToolChange }: ToolbarProps) {
       }}
     >
       <MuiToolbar variant="dense">
-        <Typography variant="h6" component="div" sx={{ mr: 4, fontWeight: 600 }}>
-          🛠️ Dev Toolbox
+        <Typography variant="h6" component="div" sx={{ mr: 4, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <HandymanIcon sx={{ fontSize: 28 }} />
+          Dev Toolbox
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, height: '100%' }}>
           {tools.map((tool) => (

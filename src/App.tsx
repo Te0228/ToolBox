@@ -5,7 +5,6 @@ import HistorySidebar from './components/HistorySidebar'
 import JsonEditor from './components/tools/JsonEditor'
 import JsonStringToJson from './components/tools/JsonStringToJson'
 import JsonToJsonString from './components/tools/JsonToJsonString'
-import { TranslatorPrototype } from './components/TranslatorPrototype'
 import { historyService } from './utils/history'
 import { ToolHandle } from './types/tool'
 
@@ -59,8 +58,6 @@ function App() {
         return <JsonStringToJson {...commonProps} />
       case 'json-to-json-string':
         return <JsonToJsonString {...commonProps} />
-      case 'translator':
-        return <TranslatorPrototype />
       default:
         return <div className="tool-placeholder">Tool coming soon...</div>
     }
