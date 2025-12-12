@@ -5,6 +5,8 @@ import HistorySidebar from './components/HistorySidebar'
 import JsonEditor from './components/tools/JsonEditor'
 import JsonStringToJson from './components/tools/JsonStringToJson'
 import JsonToJsonString from './components/tools/JsonToJsonString'
+import ChatInterface from './components/tools/ChatInterface'
+import Terminal from './components/tools/Terminal'
 import { historyService } from './utils/history'
 import { ToolHandle } from './types/tool'
 
@@ -45,19 +47,23 @@ function App() {
   }
 
   const renderTool = () => {
+    const key = loadedContent ? `loaded-${selectedHistoryId}` : 'default';
     const commonProps = {
       initialContent: loadedContent,
       ref: toolRef,
-      key: loadedContent ? `loaded-${selectedHistoryId}` : 'default'
     }
 
     switch (activeTool) {
       case 'json-editor':
-        return <JsonEditor {...commonProps} />
+        return <JsonEditor key={key} {...commonProps} />
       case 'json-string-to-json':
-        return <JsonStringToJson {...commonProps} />
+        return <JsonStringToJson key={key} {...commonProps} />
       case 'json-to-json-string':
-        return <JsonToJsonString {...commonProps} />
+        return <JsonToJsonString key={key} {...commonProps} />
+      case 'terminal':
+        return <Terminal key={key} {...commonProps} />
+      case 'chat':
+        return <ChatInterface />
       default:
         return <div className="tool-placeholder">Tool coming soon...</div>
     }
@@ -67,13 +73,15 @@ function App() {
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <Toolbar activeTool={activeTool} onToolChange={setActiveTool} />
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <HistorySidebar
-          activeTool={activeTool}
-          selectedHistoryId={selectedHistoryId}
-          onSelect={handleHistorySelect}
-          onCreate={handleCreateHistory}
-          refreshTrigger={refreshHistory}
-        />
+        {activeTool !== 'terminal' && (
+          <HistorySidebar
+            activeTool={activeTool}
+            selectedHistoryId={selectedHistoryId}
+            onSelect={handleHistorySelect}
+            onCreate={handleCreateHistory}
+            refreshTrigger={refreshHistory}
+          />
+        )}
         <Box component="main" sx={{ flex: 1, overflow: 'hidden', position: 'relative', bgcolor: 'background.paper' }}>
           {renderTool()}
         </Box>
