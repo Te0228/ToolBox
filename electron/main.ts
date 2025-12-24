@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu } from 'electron'
+import { app, BrowserWindow, Menu, dialog } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 
@@ -164,6 +164,49 @@ let llamaSession: LlamaChatSession | null = null;
 let llamaModel: LlamaModel | null = null;
 let memoryManager = new MemoryManager();
 
+// --- Settings Persistence ---
+const getSettingsPath = () => path.join(app.getPath('userData'), 'settings.json');
+
+const saveSettings = (settings: any) => {
+    try {
+        fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2));
+    } catch (e) {
+        console.error('Failed to save settings:', e);
+    }
+};
+
+const getSettings = () => {
+    try {
+        if (fs.existsSync(getSettingsPath())) {
+            return JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8'));
+        }
+    } catch (e) {
+        console.error('Failed to read settings:', e);
+    }
+    return {};
+};
+
+// --- IPC Handlers ---
+
+ipcMain.handle('chat:init', async () => {
+    const settings = getSettings();
+    const lastModelPath = settings.lastModelPath;
+    
+    // Check if default model file exists
+    // We need to know where the default model is downloaded to. 
+    // In ChatInterface, we typically use 'userData/models/'.
+    // The filename for Qwen 0.5B is 'qwen2.5-0.5b-instruct-q4_k_m.gguf' (from URL)
+    const defaultModelPath = path.join(app.getPath('userData'), 'models', 'qwen2.5-0.5b-instruct-q4_k_m.gguf');
+    const defaultModelExists = fs.existsSync(defaultModelPath);
+
+    return { 
+        lastModelPath, 
+        isLoaded: !!llamaModel,
+        defaultModelExists,
+        defaultModelPath: defaultModelExists ? defaultModelPath : null
+    };
+});
+
 // Default model URL (Qwen 2.5 0.5B - Very small and fast for testing)
 const DEFAULT_MODEL_URL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"; 
 // Note: Direct download checks might be needed.
@@ -197,7 +240,7 @@ ipcMain.handle('chat:send', async (_event, content: string) => {
 ipcMain.handle('chat:load-model', async (_event, modelPath: string) => {
     try {
         // Dynamic import
-        const { getLlama, LlamaChatSession } = await import("node-llama-cpp");
+        const { getLlama, LlamaChatSession } = await (new Function('return import("node-llama-cpp")'))();
         
         const llama = await getLlama();
         
@@ -211,12 +254,20 @@ ipcMain.handle('chat:load-model', async (_event, modelPath: string) => {
             gpuLayers: 'max'
         });
 
+        if (!llamaModel) {
+            throw new Error("Failed to load model");
+        }
         const context = await llamaModel.createContext();
         llamaSession = new LlamaChatSession({
             contextSequence: context.getSequence()
         });
         
         memoryManager.clearHistory();
+
+        // Save to settings
+        const settings = getSettings();
+        settings.lastModelPath = modelPath;
+        saveSettings(settings);
 
         return { success: true };
     } catch (e: any) {
@@ -231,7 +282,7 @@ ipcMain.handle('chat:download-model', async (event, targetPath: string) => {
     return new Promise(async (resolve, _reject) => {
         try {
             // Dynamic import to be safe
-            const { DownloaderHelper } = await import("node-downloader-helper");
+            const { DownloaderHelper } = await (new Function('return import("node-downloader-helper")'))();
 
             if (!fs.existsSync(targetPath)) {
                 fs.mkdirSync(targetPath, { recursive: true });
@@ -247,18 +298,18 @@ ipcMain.handle('chat:download-model', async (event, targetPath: string) => {
                 resolve({ success: true, path: dl.getDownloadPath() });
             });
             
-            dl.on('error', (err) => {
+            dl.on('error', (err: any) => {
                 console.error('[Main] Download error:', err);
                 resolve({ error: `Download error: ${err.message}` });
             });
             
-            dl.on('progress', (stats) => {
+            dl.on('progress', (stats: any) => {
                 // Throttle progress updates if needed, but for now raw is fine
                 event.sender.send('chat:download-progress', stats.progress);
             });
             
             console.log('[Main] Starting download...');
-            dl.start().catch(err => {
+            dl.start().catch((err: any) => {
                 console.error('[Main] Start error:', err);
                 resolve({ error: `Start error: ${err.message}` });
             });
@@ -268,6 +319,23 @@ ipcMain.handle('chat:download-model', async (event, targetPath: string) => {
             resolve({ error: `Setup error: ${e.message}` });
         }
     });
+});
+
+ipcMain.handle('chat:pick-model', async () => {
+    try {
+        const result = await dialog.showOpenDialog({
+            properties: ['openFile'],
+            filters: [{ name: 'GGUF Models', extensions: ['gguf'] }]
+        });
+
+        if (result.canceled || result.filePaths.length === 0) {
+            return { canceled: true };
+        }
+
+        return { path: result.filePaths[0] };
+    } catch (error: any) {
+        return { error: error.message };
+    }
 });
 
 

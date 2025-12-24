@@ -14,6 +14,7 @@ import SendIcon from '@mui/icons-material/Send';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import PersonIcon from '@mui/icons-material/Person';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -30,6 +31,8 @@ const ChatInterface: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [modelLoaded, setModelLoaded] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+    const [defaultModelStatus, setDefaultModelStatus] = useState<{ exists: boolean, path: string | null }>({ exists: false, path: null });
+    const [lastModelPath, setLastModelPath] = useState<string | null>(null);
     const messagesEndRef = useRef<null | HTMLDivElement>(null);
 
     const scrollToBottom = () => {
@@ -60,6 +63,30 @@ const ChatInterface: React.FC = () => {
                 }
             });
         };
+
+        // Initialize and check status
+        const checkStatus = async () => {
+            try {
+                const status = await ipcRenderer.invoke('chat:init');
+                if (status.isLoaded) {
+                    setModelLoaded(true);
+                    setMessages([{ role: 'system', content: "Model Active (Restored)" }]);
+                }
+
+                if (status.lastModelPath) {
+                    setLastModelPath(status.lastModelPath);
+                }
+
+                if (status.defaultModelExists) {
+                    setDefaultModelStatus({ exists: true, path: status.defaultModelPath });
+                }
+
+            } catch (e) {
+                console.error("Init check failed", e);
+            }
+        };
+
+        checkStatus();
 
         ipcRenderer.on('chat:download-progress', onProgress);
         ipcRenderer.on('chat:token', onToken);
@@ -132,6 +159,47 @@ const ChatInterface: React.FC = () => {
         }
     };
 
+    // Extracted load logic
+    const handleLoadModel = async (path: string) => {
+        try {
+            // @ts-ignore
+            const { ipcRenderer } = window.require('electron');
+            const loadResult = await ipcRenderer.invoke('chat:load-model', path);
+            if (loadResult.success) {
+                setModelLoaded(true);
+                setMessages(prev => [...prev, { role: 'system', content: `Model loaded successfully.` }]);
+            } else {
+                setMessages(prev => [...prev, { role: 'system', content: `Failed to load model: ${loadResult.error}` }]);
+            }
+        } catch (e: any) {
+            setMessages(prev => [...prev, { role: 'system', content: `Error loading model: ${e.message}` }]);
+        }
+    };
+
+    const handlePickModel = async () => {
+        try {
+            // @ts-ignore
+            const { ipcRenderer } = window.require('electron');
+            const result = await ipcRenderer.invoke('chat:pick-model');
+
+            if (result.canceled) return;
+
+            if (result.path) {
+                const loadResult = await ipcRenderer.invoke('chat:load-model', result.path);
+                if (loadResult.success) {
+                    setModelLoaded(true);
+                    setMessages(prev => [...prev, { role: 'system', content: `Model loaded: ${result.path}` }]);
+                } else {
+                    setMessages(prev => [...prev, { role: 'system', content: `Failed to load model: ${loadResult.error}` }]);
+                }
+            } else if (result.error) {
+                setMessages(prev => [...prev, { role: 'system', content: `Selection error: ${result.error}` }]);
+            }
+        } catch (e: any) {
+            setMessages(prev => [...prev, { role: 'system', content: `Error: ${e.message}` }]);
+        }
+    };
+
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.default' }}>
 
@@ -149,18 +217,43 @@ const ChatInterface: React.FC = () => {
                     <SmartToyIcon color="primary" />
                     <Typography variant="h6" fontWeight="bold">AI Assistant</Typography>
                 </Box>
-                <Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
                     {!modelLoaded && (
-                        <Button
-                            variant="contained"
-                            size="small"
-                            startIcon={downloadProgress !== null ? <CircularProgress size={16} color="inherit" /> : <CloudDownloadIcon />}
-                            onClick={handleDownloadDefault}
-                            disabled={downloadProgress !== null}
-                            sx={{ textTransform: 'none' }}
-                        >
-                            {downloadProgress !== null ? `Downloading ${downloadProgress.toFixed(0)}%` : "Initial Setup (Download Model)"}
-                        </Button>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                            {lastModelPath && (
+                                <Button
+                                    variant="contained"
+                                    color="secondary"
+                                    size="small"
+                                    onClick={() => handleLoadModel(lastModelPath)}
+                                    disabled={downloadProgress !== null}
+                                    sx={{ textTransform: 'none' }}
+                                >
+                                    Load Last Used
+                                </Button>
+                            )}
+
+                            <Button
+                                variant={defaultModelStatus.exists ? "outlined" : "contained"}
+                                size="small"
+                                startIcon={downloadProgress !== null ? <CircularProgress size={16} color="inherit" /> : <CloudDownloadIcon />}
+                                onClick={defaultModelStatus.exists ? () => handleLoadModel(defaultModelStatus.path!) : handleDownloadDefault}
+                                disabled={downloadProgress !== null}
+                                sx={{ textTransform: 'none' }}
+                            >
+                                {downloadProgress !== null ? `Downloading ${downloadProgress.toFixed(0)}%` : (defaultModelStatus.exists ? "Load Default Model" : "Download Default")}
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                startIcon={<FolderOpenIcon />}
+                                onClick={handlePickModel}
+                                disabled={downloadProgress !== null}
+                                sx={{ textTransform: 'none' }}
+                            >
+                                Select Local
+                            </Button>
+                        </Box>
                     )}
                     {modelLoaded && (
                         <Typography variant="caption" color="success.main" fontWeight="bold">
@@ -233,7 +326,7 @@ const ChatInterface: React.FC = () => {
                                         }
                                     }}
                                 >
-                                    {msg.content}
+                                    {String(msg.content || '')}
                                 </ReactMarkdown>
                             )}
                         </Card>
