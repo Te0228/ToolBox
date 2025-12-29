@@ -65,6 +65,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
+      webviewTag: true,
     },
     ...(process.platform === 'darwin' ? {
       titleBarStyle: 'hiddenInset',
@@ -154,190 +155,201 @@ ipcMain.handle('terminal:execute', async (_event, command: string) => {
   }
 })
 
-// --- Chat Module & node-llama-cpp Integration ---
-// --- Chat Module & node-llama-cpp Integration ---
-import type { LlamaChatSession, LlamaModel } from "node-llama-cpp";
-import { MemoryManager } from './memory-manager';
-// node-downloader-helper will be dynamically imported
 
-let llamaSession: LlamaChatSession | null = null;
-let llamaModel: LlamaModel | null = null;
-let memoryManager = new MemoryManager();
 
-// --- Settings Persistence ---
-const getSettingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 
-const saveSettings = (settings: any) => {
-    try {
-        fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2));
-    } catch (e) {
-        console.error('Failed to save settings:', e);
+// --- Bookmark Management ---
+interface Bookmark {
+  id: string;
+  title: string;
+  url: string;
+  favicon?: string;
+  thumbnail?: string;
+  description?: string;
+  tags: string[];
+  createdAt: string;
+  lastVisited?: string;
+  visitCount: number;
+}
+
+interface BookmarkFolder {
+  id: string;
+  name: string;
+  color?: string;
+  createdAt: string;
+  bookmarkIds: string[];
+}
+
+interface BookmarkData {
+  bookmarks: Bookmark[];
+  folders: BookmarkFolder[];
+  settings: {
+    autoCaptureThumbnail: boolean;
+    defaultFolder: string;
+  };
+}
+
+const getBookmarksPath = () => path.join(app.getPath('userData'), 'browser', 'bookmarks.json');
+const getThumbnailsPath = () => path.join(app.getPath('userData'), 'browser', 'thumbnails');
+const getFaviconsPath = () => path.join(app.getPath('userData'), 'browser', 'favicons');
+
+const ensureBookmarkDirectories = () => {
+  const browserDir = path.join(app.getPath('userData'), 'browser');
+  const thumbnailsDir = getThumbnailsPath();
+  const faviconsDir = getFaviconsPath();
+
+  [browserDir, thumbnailsDir, faviconsDir].forEach(dir => {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
+  });
 };
 
-const getSettings = () => {
-    try {
-        if (fs.existsSync(getSettingsPath())) {
-            return JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8'));
-        }
-    } catch (e) {
-        console.error('Failed to read settings:', e);
+const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
+
+const loadBookmarks = async (): Promise<BookmarkData> => {
+  try {
+    ensureBookmarkDirectories();
+    const bookmarksPath = getBookmarksPath();
+
+    if (fs.existsSync(bookmarksPath)) {
+      const content = fs.readFileSync(bookmarksPath, 'utf-8');
+      return JSON.parse(content);
     }
-    return {};
+  } catch (error) {
+    console.error('Error loading bookmarks:', error);
+  }
+
+  return {
+    bookmarks: [],
+    folders: [
+      {
+        id: 'default',
+        name: '默认收藏夹',
+        createdAt: new Date().toISOString(),
+        bookmarkIds: []
+      }
+    ],
+    settings: {
+      autoCaptureThumbnail: true,
+      defaultFolder: 'default'
+    }
+  };
 };
 
-// --- IPC Handlers ---
+const saveBookmarks = async (data: BookmarkData): Promise<void> => {
+  ensureBookmarkDirectories();
+  const bookmarksPath = getBookmarksPath();
+  fs.writeFileSync(bookmarksPath, JSON.stringify(data, null, 2));
+};
 
-ipcMain.handle('chat:init', async () => {
-    const settings = getSettings();
-    const lastModelPath = settings.lastModelPath;
-    
-    // Check if default model file exists
-    // We need to know where the default model is downloaded to. 
-    // In ChatInterface, we typically use 'userData/models/'.
-    // The filename for Qwen 0.5B is 'qwen2.5-0.5b-instruct-q4_k_m.gguf' (from URL)
-    const defaultModelPath = path.join(app.getPath('userData'), 'models', 'qwen2.5-0.5b-instruct-q4_k_m.gguf');
-    const defaultModelExists = fs.existsSync(defaultModelPath);
-
-    return { 
-        lastModelPath, 
-        isLoaded: !!llamaModel,
-        defaultModelExists,
-        defaultModelPath: defaultModelExists ? defaultModelPath : null
+// Bookmark IPC Handlers
+ipcMain.handle('bookmarks:add', async (_event, bookmark: Omit<Bookmark, 'id' | 'createdAt' | 'visitCount'>) => {
+  try {
+    const data = await loadBookmarks();
+    const newBookmark: Bookmark = {
+      ...bookmark,
+      id: generateId(),
+      createdAt: new Date().toISOString(),
+      visitCount: 0
     };
+
+    data.bookmarks.push(newBookmark);
+    await saveBookmarks(data);
+    return { success: true, bookmark: newBookmark };
+  } catch (error: any) {
+    return { error: error.message };
+  }
 });
 
-// Default model URL (Qwen 2.5 0.5B - Very small and fast for testing)
-const DEFAULT_MODEL_URL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"; 
-// Note: Direct download checks might be needed.
+ipcMain.handle('bookmarks:remove', async (_event, id: string) => {
+  try {
+    const data = await loadBookmarks();
+    data.bookmarks = data.bookmarks.filter(b => b.id !== id);
 
-ipcMain.handle('chat:send', async (_event, content: string) => {
-    // Dynamic import to handle ESM requirement
-    // We can't easily check instance of LlamaChatSession without importing it,
-    // but if llamaSession is null, we return error anyway.
-    if (!llamaSession) {
-        return { error: "Model not loaded" };
-    }
-
-    try {
-        memoryManager.addMessage('user', content);
-        
-        // Ensure prompt includes history or uses session
-        const response = await llamaSession.prompt(content, {
-             onToken: (chunk) => {
-                 _event.sender.send('chat:token', chunk);
-             }
-        });
-        
-        memoryManager.addMessage('assistant', response);
-        return { response };
-    } catch (e: any) {
-        console.error("Chat Error:", e);
-        return { error: e.message };
-    }
-});
-
-ipcMain.handle('chat:load-model', async (_event, modelPath: string) => {
-    try {
-        // Dynamic import
-        const { getLlama, LlamaChatSession } = await (new Function('return import("node-llama-cpp")'))();
-        
-        const llama = await getLlama();
-        
-        // Unload previous if exists
-        if (llamaModel) {
-            // Cleanup logic if needed
-        }
-
-        llamaModel = await llama.loadModel({
-            modelPath: modelPath,
-            gpuLayers: 'max'
-        });
-
-        if (!llamaModel) {
-            throw new Error("Failed to load model");
-        }
-        const context = await llamaModel.createContext();
-        llamaSession = new LlamaChatSession({
-            contextSequence: context.getSequence()
-        });
-        
-        memoryManager.clearHistory();
-
-        // Save to settings
-        const settings = getSettings();
-        settings.lastModelPath = modelPath;
-        saveSettings(settings);
-
-        return { success: true };
-    } catch (e: any) {
-        console.error("Load Model Error:", e);
-        return { error: e.message };
-    }
-});
-
-// Download Manager
-ipcMain.handle('chat:download-model', async (event, targetPath: string) => {
-    console.log('[Main] Download requested for:', targetPath);
-    return new Promise(async (resolve, _reject) => {
-        try {
-            // Dynamic import to be safe
-            const { DownloaderHelper } = await (new Function('return import("node-downloader-helper")'))();
-
-            if (!fs.existsSync(targetPath)) {
-                fs.mkdirSync(targetPath, { recursive: true });
-            }
-
-            const dl = new DownloaderHelper(DEFAULT_MODEL_URL, targetPath, {
-                override: true,
-                retry: { maxRetries: 3, delay: 1000 }
-            });
-
-            dl.on('end', () => {
-                console.log('[Main] Download complete');
-                resolve({ success: true, path: dl.getDownloadPath() });
-            });
-            
-            dl.on('error', (err: any) => {
-                console.error('[Main] Download error:', err);
-                resolve({ error: `Download error: ${err.message}` });
-            });
-            
-            dl.on('progress', (stats: any) => {
-                // Throttle progress updates if needed, but for now raw is fine
-                event.sender.send('chat:download-progress', stats.progress);
-            });
-            
-            console.log('[Main] Starting download...');
-            dl.start().catch((err: any) => {
-                console.error('[Main] Start error:', err);
-                resolve({ error: `Start error: ${err.message}` });
-            });
-
-        } catch (e: any) {
-            console.error('[Main] Setup error:', e);
-            resolve({ error: `Setup error: ${e.message}` });
-        }
+    // Remove from folders
+    data.folders.forEach(folder => {
+      folder.bookmarkIds = folder.bookmarkIds.filter(bookmarkId => bookmarkId !== id);
     });
+
+    await saveBookmarks(data);
+    return { success: true };
+  } catch (error: any) {
+    return { error: error.message };
+  }
 });
 
-ipcMain.handle('chat:pick-model', async () => {
-    try {
-        const result = await dialog.showOpenDialog({
-            properties: ['openFile'],
-            filters: [{ name: 'GGUF Models', extensions: ['gguf'] }]
-        });
+ipcMain.handle('bookmarks:getAll', async () => {
+  try {
+    const data = await loadBookmarks();
+    return { success: true, bookmarks: data.bookmarks, folders: data.folders };
+  } catch (error: any) {
+    return { error: error.message };
+  }
+});
 
-        if (result.canceled || result.filePaths.length === 0) {
-            return { canceled: true };
-        }
+ipcMain.handle('bookmarks:search', async (_event, query: string) => {
+  try {
+    const data = await loadBookmarks();
+    const lowerQuery = query.toLowerCase();
 
-        return { path: result.filePaths[0] };
-    } catch (error: any) {
-        return { error: error.message };
+    const filteredBookmarks = data.bookmarks.filter(bookmark =>
+      bookmark.title.toLowerCase().includes(lowerQuery) ||
+      bookmark.url.toLowerCase().includes(lowerQuery) ||
+      bookmark.description?.toLowerCase().includes(lowerQuery) ||
+      bookmark.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+    );
+
+    return { success: true, bookmarks: filteredBookmarks };
+  } catch (error: any) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('bookmarks:createFolder', async (_event, name: string, color?: string) => {
+  try {
+    const data = await loadBookmarks();
+    const folder: BookmarkFolder = {
+      id: generateId(),
+      name,
+      color,
+      createdAt: new Date().toISOString(),
+      bookmarkIds: []
+    };
+
+    data.folders.push(folder);
+    await saveBookmarks(data);
+    return { success: true, folder };
+  } catch (error: any) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('bookmarks:addToFolder', async (_event, bookmarkId: string, folderId: string) => {
+  try {
+    const data = await loadBookmarks();
+    const folder = data.folders.find(f => f.id === folderId);
+
+    if (folder && !folder.bookmarkIds.includes(bookmarkId)) {
+      folder.bookmarkIds.push(bookmarkId);
+      await saveBookmarks(data);
     }
+
+    return { success: true };
+  } catch (error: any) {
+    return { error: error.message };
+  }
 });
 
+ipcMain.handle('bookmarks:checkExists', async (_event, url: string) => {
+  try {
+    const data = await loadBookmarks();
+    const exists = data.bookmarks.some(b => b.url === url);
+    return { success: true, exists };
+  } catch (error: any) {
+    return { error: error.message };
+  }
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

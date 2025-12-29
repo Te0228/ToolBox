@@ -5,8 +5,8 @@ import HistorySidebar from './components/HistorySidebar'
 import JsonEditor from './components/tools/JsonEditor'
 import JsonStringToJson from './components/tools/JsonStringToJson'
 import JsonToJsonString from './components/tools/JsonToJsonString'
-import ChatInterface from './components/tools/ChatInterface'
 import Terminal from './components/tools/Terminal'
+import WebBrowser from './components/tools/WebBrowser'
 import { historyService } from './utils/history'
 import { ToolHandle } from './types/tool'
 
@@ -62,8 +62,8 @@ function App() {
         return <JsonToJsonString key={key} {...commonProps} />
       case 'terminal':
         return <Terminal key={key} {...commonProps} />
-      case 'chat':
-        return <ChatInterface />
+      case 'browser':
+        return <WebBrowser />
       default:
         return <div className="tool-placeholder">Tool coming soon...</div>
     }
@@ -73,7 +73,7 @@ function App() {
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <Toolbar activeTool={activeTool} onToolChange={setActiveTool} />
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {activeTool !== 'terminal' && (
+        {activeTool !== 'terminal' && activeTool !== 'browser' && (
           <HistorySidebar
             activeTool={activeTool}
             selectedHistoryId={selectedHistoryId}
