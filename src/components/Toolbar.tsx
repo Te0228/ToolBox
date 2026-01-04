@@ -5,8 +5,9 @@ import LockIcon from '@mui/icons-material/Lock'
 import TerminalIcon from '@mui/icons-material/Terminal'
 import HandymanIcon from '@mui/icons-material/Handyman'
 import LanguageIcon from '@mui/icons-material/Language'
+import DescriptionIcon from '@mui/icons-material/Description'
 
-export type Tool = 'json-editor' | 'json-string-to-json' | 'json-to-json-string' | 'terminal' | 'browser' | 'placeholder'
+export type Tool = 'json-editor' | 'json-string-to-json' | 'json-to-json-string' | 'markdown-editor' | 'terminal' | 'browser' | 'placeholder'
 
 interface ToolbarProps {
   activeTool: Tool
@@ -17,6 +18,7 @@ const tools = [
   { id: 'json-editor' as Tool, name: 'JSON Editor', icon: <EditNoteIcon /> },
   { id: 'json-string-to-json' as Tool, name: 'String → JSON', icon: <LockOpenIcon /> },
   { id: 'json-to-json-string' as Tool, name: 'JSON → String', icon: <LockIcon /> },
+  { id: 'markdown-editor' as Tool, name: 'Markdown', icon: <DescriptionIcon /> },
   { id: 'terminal' as Tool, name: 'Terminal', icon: <TerminalIcon /> },
   { id: 'browser' as Tool, name: 'Browser', icon: <LanguageIcon /> },
 ]

@@ -5,6 +5,7 @@ import HistorySidebar from './components/HistorySidebar'
 import JsonEditor from './components/tools/JsonEditor'
 import JsonStringToJson from './components/tools/JsonStringToJson'
 import JsonToJsonString from './components/tools/JsonToJsonString'
+import MarkdownEditor from './components/tools/MarkdownEditor'
 import Terminal from './components/tools/Terminal'
 import WebBrowser from './components/tools/WebBrowser'
 import { historyService } from './utils/history'
@@ -60,6 +61,8 @@ function App() {
         return <JsonStringToJson key={key} {...commonProps} />
       case 'json-to-json-string':
         return <JsonToJsonString key={key} {...commonProps} />
+      case 'markdown-editor':
+        return <MarkdownEditor key={key} {...commonProps} />
       case 'terminal':
         return <Terminal key={key} {...commonProps} />
       case 'browser':

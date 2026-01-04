@@ -97,3 +97,29 @@
 - 遵循 TypeScript 严格模式
 - 确保代码风格统一
 - 遵循 Electron 安全最佳实践
+
+---
+
+## 6. 工具列表
+
+### JSON 工具
+- **JSON Editor**: 编辑和验证 JSON 格式
+- **String → JSON**: 将 JSON 字符串转换为格式化的 JSON
+- **JSON → String**: 将 JSON 转换为字符串格式
+- **JSON+MD Viewer**: 展示包含 Markdown 字段的 JSON 数据
+  - 自动识别并渲染 Markdown 字段
+  - 支持自定义字段名配置
+  - 分屏展示：左侧编辑，右侧预览
+  - 递归遍历嵌套对象
+
+### Markdown 工具
+- **Markdown Editor**: 支持实时预览的 Markdown 编辑器
+  - 三种视图模式：编辑、预览、分屏
+  - 支持 GitHub Flavored Markdown (GFM)
+  - 代码高亮显示
+  - 支持表格、任务列表等扩展语法
+  - 自动处理 JSON 转义字符
+
+### 其他工具
+- **Terminal**: 内置终端
+- **Browser**: 内置浏览器
