@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef } from 'react'
 import Editor from '@monaco-editor/react'
 import { Box, Button, Select, MenuItem, Typography, Stack, Paper, Chip, ToggleButton } from '@mui/material'
 import FormatAlignLeftIcon from '@mui/icons-material/FormatAlignLeft'
@@ -22,6 +22,7 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
   const [isValidating, setIsValidating] = useState(false)
   const [showMarkdown, setShowMarkdown] = useState(false)
   const [parsedJson, setParsedJson] = useState<any>(null)
+  const editorInstanceRef = useRef<any>(null)
 
   useImperativeHandle(ref, () => ({
     getContent: () => content,
@@ -309,11 +310,15 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
               defaultLanguage="json"
               value={content}
               onChange={handleContentChange}
+              theme="vs"
               options={{
                 ...editorOptions,
                 contextmenu: true,
               }}
               onMount={(editor, monaco) => {
+                // Store editor instance
+                editorInstanceRef.current = editor
+                
                 // Add paste command (Cmd+V / Ctrl+V)
                 editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
                   try {
@@ -332,7 +337,8 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                   }
                 });
 
-                editor.focus();
+                // Focus editor on mount
+                setTimeout(() => editor.focus(), 100);
               }}
             />
           </Box>

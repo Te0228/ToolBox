@@ -96,6 +96,7 @@ const JsonToJsonString = forwardRef<ToolHandle, JsonToJsonStringProps>(({ initia
                                 defaultLanguage="json"
                                 value={input}
                                 onChange={handleInputChange}
+                                theme="vs"
                                 options={{
                                     ...commonEditorOptions,
                                     contextmenu: true,
@@ -131,6 +132,7 @@ const JsonToJsonString = forwardRef<ToolHandle, JsonToJsonStringProps>(({ initia
                             height="100%"
                             defaultLanguage="text"
                             value={output}
+                            theme="vs"
                             options={{
                                 ...commonEditorOptions,
                                 readOnly: true,

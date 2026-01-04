@@ -17,9 +17,30 @@ function App() {
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
   const [loadedContent, setLoadedContent] = useState<string | null>(null)
   const [refreshHistory, setRefreshHistory] = useState(0)
-  const toolRef = useRef<ToolHandle>(null)
+  
+  // 为每个工具保存独立的 ref
+  const toolRefs = useRef<Record<Tool, ToolHandle | null>>({
+    'json-editor': null,
+    'json-string-to-json': null,
+    'json-to-json-string': null,
+    'markdown-editor': null,
+    'terminal': null,
+    'browser': null,
+    'placeholder': null
+  })
+  
+  // 保存每个工具的内容状态
+  const [toolContents, setToolContents] = useState<Record<Tool, string>>({
+    'json-editor': '',
+    'json-string-to-json': '',
+    'json-to-json-string': '',
+    'markdown-editor': '',
+    'terminal': '',
+    'browser': '',
+    'placeholder': ''
+  })
 
-  // Clear selection and content when switching tools
+  // 切换工具时清空历史选择
   useEffect(() => {
     setSelectedHistoryId(null)
     setLoadedContent(null)
@@ -32,44 +53,106 @@ function App() {
     if (item) {
       setSelectedHistoryId(id)
       setLoadedContent(item.content)
+      // 更新当前工具的内容
+      setToolContents(prev => ({
+        ...prev,
+        [activeTool]: item.content
+      }))
     }
   }
 
   const handleCreateHistory = () => {
-    const content = toolRef.current?.getContent()
+    const currentRef = toolRefs.current[activeTool]
+    const content = currentRef?.getContent()
     if (content && content.trim()) {
       historyService.add(activeTool, content)
       setRefreshHistory(prev => prev + 1)
       // Clear the tool content after saving
-      toolRef.current?.clearContent()
+      currentRef?.clearContent()
       setSelectedHistoryId(null)
       setLoadedContent(null)
+      // 清空当前工具的内容状态
+      setToolContents(prev => ({
+        ...prev,
+        [activeTool]: ''
+      }))
     }
   }
+  
+  // 当工具内容变化时更新状态
+  const handleContentChange = (tool: Tool, content: string) => {
+    setToolContents(prev => ({
+      ...prev,
+      [tool]: content
+    }))
+  }
 
-  const renderTool = () => {
-    const key = loadedContent ? `loaded-${selectedHistoryId}` : 'default';
-    const commonProps = {
-      initialContent: loadedContent,
-      ref: toolRef,
-    }
+  const renderAllTools = () => {
+    const tools: Array<{ id: Tool; component: JSX.Element }> = [
+      {
+        id: 'json-editor',
+        component: (
+          <JsonEditor
+            initialContent={toolContents['json-editor']}
+            ref={(ref) => { toolRefs.current['json-editor'] = ref }}
+          />
+        )
+      },
+      {
+        id: 'json-string-to-json',
+        component: (
+          <JsonStringToJson
+            initialContent={toolContents['json-string-to-json']}
+            ref={(ref) => { toolRefs.current['json-string-to-json'] = ref }}
+          />
+        )
+      },
+      {
+        id: 'json-to-json-string',
+        component: (
+          <JsonToJsonString
+            initialContent={toolContents['json-to-json-string']}
+            ref={(ref) => { toolRefs.current['json-to-json-string'] = ref }}
+          />
+        )
+      },
+      {
+        id: 'markdown-editor',
+        component: (
+          <MarkdownEditor
+            initialContent={toolContents['markdown-editor']}
+            ref={(ref) => { toolRefs.current['markdown-editor'] = ref }}
+          />
+        )
+      },
+      {
+        id: 'terminal',
+        component: (
+          <Terminal
+            initialContent={toolContents['terminal']}
+            ref={(ref) => { toolRefs.current['terminal'] = ref }}
+          />
+        )
+      },
+      {
+        id: 'browser',
+        component: <WebBrowser />
+      }
+    ]
 
-    switch (activeTool) {
-      case 'json-editor':
-        return <JsonEditor key={key} {...commonProps} />
-      case 'json-string-to-json':
-        return <JsonStringToJson key={key} {...commonProps} />
-      case 'json-to-json-string':
-        return <JsonToJsonString key={key} {...commonProps} />
-      case 'markdown-editor':
-        return <MarkdownEditor key={key} {...commonProps} />
-      case 'terminal':
-        return <Terminal key={key} {...commonProps} />
-      case 'browser':
-        return <WebBrowser />
-      default:
-        return <div className="tool-placeholder">Tool coming soon...</div>
-    }
+    return tools.map(({ id, component }) => (
+      <Box
+        key={id}
+        sx={{
+          display: activeTool === id ? 'flex' : 'none',
+          flexDirection: 'column',
+          height: '100%',
+          width: '100%'
+        }}
+      >
+        {component}
+      </Box>
+    ))
   }
 
   return (
@@ -86,7 +169,7 @@ function App() {
           />
         )}
         <Box component="main" sx={{ flex: 1, overflow: 'hidden', position: 'relative', bgcolor: 'background.paper' }}>
-          {renderTool()}
+          {renderAllTools()}
         </Box>
       </Box>
     </Box>

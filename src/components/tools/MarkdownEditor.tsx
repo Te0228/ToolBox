@@ -108,7 +108,7 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
           ...editorOptions,
           contextmenu: true,
         }}
-        theme="vs-dark"
+        theme="vs"
         onMount={(editor, monaco) => {
           // Store editor reference
           editorRef.current = editor
@@ -135,7 +135,7 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
           });
 
           // Focus editor on mount
-          editor.focus();
+          setTimeout(() => editor.focus(), 100);
         }}
       />
     </Box>
