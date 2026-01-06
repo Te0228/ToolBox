@@ -2,12 +2,11 @@ import { AppBar, Toolbar as MuiToolbar, Typography, Button, Box } from '@mui/mat
 import EditNoteIcon from '@mui/icons-material/EditNote'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
 import LockIcon from '@mui/icons-material/Lock'
-import TerminalIcon from '@mui/icons-material/Terminal'
 import HandymanIcon from '@mui/icons-material/Handyman'
 import LanguageIcon from '@mui/icons-material/Language'
 import DescriptionIcon from '@mui/icons-material/Description'
 
-export type Tool = 'json-editor' | 'json-string-to-json' | 'json-to-json-string' | 'markdown-editor' | 'terminal' | 'browser' | 'placeholder'
+export type Tool = 'json-editor' | 'json-string-to-json' | 'json-to-json-string' | 'markdown-editor' | 'browser' | 'placeholder'
 
 interface ToolbarProps {
   activeTool: Tool
@@ -19,7 +18,6 @@ const tools = [
   { id: 'json-string-to-json' as Tool, name: 'String → JSON', icon: <LockOpenIcon /> },
   { id: 'json-to-json-string' as Tool, name: 'JSON → String', icon: <LockIcon /> },
   { id: 'markdown-editor' as Tool, name: 'Markdown', icon: <DescriptionIcon /> },
-  { id: 'terminal' as Tool, name: 'Terminal', icon: <TerminalIcon /> },
   { id: 'browser' as Tool, name: 'Browser', icon: <LanguageIcon /> },
 ]
 
@@ -30,7 +28,7 @@ export default function Toolbar({ activeTool, onToolChange }: ToolbarProps) {
       sx={{
         zIndex: (theme) => theme.zIndex.drawer + 1,
         WebkitAppRegion: 'drag',
-        paddingLeft: '80px' // Space for traffic lights
+        paddingLeft: '80px'
       }}
     >
       <MuiToolbar variant="dense">

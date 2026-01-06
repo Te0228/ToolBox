@@ -1,4 +1,4 @@
-import { useState, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react'
 import Editor from '@monaco-editor/react'
 import { Box, Typography, Paper, Stack, IconButton } from '@mui/material'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
@@ -14,6 +14,7 @@ const JsonStringToJson = forwardRef<ToolHandle, JsonStringToJsonProps>(({ initia
     const [output, setOutput] = useState('')
     const [error, setError] = useState<string | null>(null);
     const [inputCollapsed, setInputCollapsed] = useState(false);
+    const inputEditorRef = useRef<any>(null);
 
     useImperativeHandle(ref, () => ({
         getContent: () => input,
@@ -30,6 +31,41 @@ const JsonStringToJson = forwardRef<ToolHandle, JsonStringToJsonProps>(({ initia
             handleConvert(initialContent);
         }
     }, [initialContent]);
+
+    // 添加全局粘贴事件监听
+    useEffect(() => {
+        const handlePaste = (e: ClipboardEvent) => {
+            if (inputEditorRef.current && document.activeElement?.closest('.monaco-editor')) {
+                e.preventDefault()
+                try {
+                    const text = window.require('electron').clipboard.readText()
+                    const selection = inputEditorRef.current.getSelection()
+                    if (selection) {
+                        inputEditorRef.current.executeEdits('paste', [{
+                            range: selection,
+                            text: text,
+                            forceMoveMarkers: true
+                        }])
+                    }
+                } catch (err) {
+                    const text = e.clipboardData?.getData('text/plain')
+                    if (text && inputEditorRef.current) {
+                        const selection = inputEditorRef.current.getSelection()
+                        if (selection) {
+                            inputEditorRef.current.executeEdits('paste', [{
+                                range: selection,
+                                text: text,
+                                forceMoveMarkers: true
+                            }])
+                        }
+                    }
+                }
+            }
+        }
+
+        document.addEventListener('paste', handlePaste)
+        return () => document.removeEventListener('paste', handlePaste)
+    }, []);
 
     const toggleInput = () => setInputCollapsed(prev => !prev);
 
@@ -108,6 +144,7 @@ const JsonStringToJson = forwardRef<ToolHandle, JsonStringToJsonProps>(({ initia
                                     contextmenu: true,
                                 }}
                                 onMount={(editor, monaco) => {
+                                    inputEditorRef.current = editor
                                     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
                                         try {
                                             const text = window.require('electron').clipboard.readText();
@@ -124,6 +161,7 @@ const JsonStringToJson = forwardRef<ToolHandle, JsonStringToJsonProps>(({ initia
                                             editor.trigger('keyboard', 'paste', null);
                                         }
                                     });
+                                    setTimeout(() => editor.focus(), 100);
                                 }}
                             />
                         </Box>

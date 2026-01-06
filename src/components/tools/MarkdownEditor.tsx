@@ -65,6 +65,45 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
     }
   }, [initialContent])
 
+  // 添加全局粘贴事件监听
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      // 只在编辑器可见且有焦点时处理
+      if (editorRef.current && document.activeElement?.closest('.monaco-editor')) {
+        e.preventDefault()
+        try {
+          const text = window.require('electron').clipboard.readText()
+          const unescaped = unescapeString(text)
+          const selection = editorRef.current.getSelection()
+          if (selection) {
+            editorRef.current.executeEdits('paste', [{
+              range: selection,
+              text: unescaped,
+              forceMoveMarkers: true
+            }])
+          }
+        } catch (err) {
+          // 降级到默认粘贴
+          const text = e.clipboardData?.getData('text/plain')
+          if (text && editorRef.current) {
+            const unescaped = unescapeString(text)
+            const selection = editorRef.current.getSelection()
+            if (selection) {
+              editorRef.current.executeEdits('paste', [{
+                range: selection,
+                text: unescaped,
+                forceMoveMarkers: true
+              }])
+            }
+          }
+        }
+      }
+    }
+
+    document.addEventListener('paste', handlePaste)
+    return () => document.removeEventListener('paste', handlePaste)
+  }, [])
+
   const handleContentChange = (value: string | undefined) => {
     setContent(value || '')
   }

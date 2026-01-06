@@ -38,38 +38,6 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
     }
   }, [initialContent])
 
-  // 验证JSON格式
-  const validateJson = useCallback((jsonString: string) => {
-    if (!jsonString.trim()) {
-      setError(null)
-      setParsedJson(null)
-      return true
-    }
-
-    try {
-      const parsed = JSON.parse(jsonString)
-      setParsedJson(parsed)
-      setError(null)
-      return true
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Invalid JSON'
-      setError(errorMessage)
-      setParsedJson(null)
-      return false
-    }
-  }, [])
-
-  // 延迟验证
-  useEffect(() => {
-    if (isValidating) {
-      const timer = setTimeout(() => {
-        validateJson(content)
-        setIsValidating(false)
-      }, 500)
-      return () => clearTimeout(timer)
-    }
-  }, [content, isValidating, validateJson])
-
   const handleContentChange = (value: string | undefined) => {
     const newValue = value || ''
     setContent(newValue)
@@ -191,7 +159,6 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
     }
 
     if (typeof value === 'string') {
-      // 所有字符串都按 Markdown 渲染
       if (value.length > 0) {
         return (
           <Box sx={{ mt: 1 }}>
@@ -246,6 +213,38 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
 
     return <Typography component="span">{String(value)}</Typography>
   }
+
+  // 验证JSON格式
+  const validateJson = useCallback((jsonString: string) => {
+    if (!jsonString.trim()) {
+      setError(null)
+      setParsedJson(null)
+      return true
+    }
+
+    try {
+      const parsed = JSON.parse(jsonString)
+      setParsedJson(parsed)
+      setError(null)
+      return true
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Invalid JSON'
+      setError(errorMessage)
+      setParsedJson(null)
+      return false
+    }
+  }, [])
+
+  // 延迟验证
+  useEffect(() => {
+    if (isValidating) {
+      const timer = setTimeout(() => {
+        validateJson(content)
+        setIsValidating(false)
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [content, isValidating, validateJson])
 
   const editorOptions = {
     minimap: { enabled: false },
@@ -303,7 +302,6 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
 
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
         {!showMarkdown ? (
-          /* JSON 编辑器 */
           <Box sx={{ flex: 1, minHeight: 0 }}>
             <Editor
               height="100%"
@@ -315,35 +313,13 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                 ...editorOptions,
                 contextmenu: true,
               }}
-              onMount={(editor, monaco) => {
-                // Store editor instance
+              onMount={(editor) => {
                 editorInstanceRef.current = editor
-                
-                // Add paste command (Cmd+V / Ctrl+V)
-                editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
-                  try {
-                    const text = window.require('electron').clipboard.readText();
-                    const selection = editor.getSelection();
-                    if (selection) {
-                      editor.executeEdits('paste', [{
-                        range: selection,
-                        text: text,
-                        forceMoveMarkers: true
-                      }]);
-                    }
-                  } catch (e) {
-                    console.error('Failed to read from clipboard:', e);
-                    editor.trigger('keyboard', 'paste', null);
-                  }
-                });
-
-                // Focus editor on mount
-                setTimeout(() => editor.focus(), 100);
+                setTimeout(() => editor.focus(), 100)
               }}
             />
           </Box>
         ) : (
-          /* Markdown 预览 */
           <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 2, bgcolor: 'background.paper' }}>
             {error ? (
               <Paper

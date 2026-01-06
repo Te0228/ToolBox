@@ -1,15 +1,30 @@
 {
   "appId": "com.devtools.toolbox",
   "productName": "ToolBox",
-  "directories": {
-    "output": "release",
-    "buildResources": "build"
-  },
+  "compression": "maximum",
   "files": [
     "dist/**/*",
     "dist-electron/**/*",
     "package.json"
   ],
+  "extraMetadata": {
+    "main": "dist-electron/main.js"
+  },
+  "asar": true,
+  "asarUnpack": [],
+  "directories": {
+    "output": "release",
+    "buildResources": "build"
+  },
+  "fileAssociations": [],
+  "protocols": [],
+  "extraFiles": [],
+  "electronDownload": {
+    "cache": "./.electron"
+  },
+  "npmRebuild": false,
+  "detectUpdateChannel": false,
+  "afterPack": "./scripts/afterPack.js",
   "mac": {
     "category": "public.app-category.developer-tools",
     "target": [
@@ -19,7 +34,11 @@
       }
     ],
     "icon": "build/icon.png",
-    "artifactName": "${productName}-${version}-${arch}.${ext}"
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "extendInfo": {
+      "NSRequiresAquaSystemAppearance": false,
+      "NSHighResolutionCapable": true
+    }
   },
   "dmg": {
     "title": "${productName} ${version}",
