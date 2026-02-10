@@ -5,6 +5,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import { ToolHandle } from '../../types/tool'
+import { insertTextAtSelections, readClipboardText, runDefaultPaste } from '../../utils/monacoClipboard'
 
 interface JsonToJsonStringProps {
     initialContent?: string | null
@@ -32,41 +33,6 @@ const JsonToJsonString = forwardRef<ToolHandle, JsonToJsonStringProps>(({ initia
             handleConvert(initialContent)
         }
     }, [initialContent])
-
-    // 添加全局粘贴事件监听
-    useEffect(() => {
-        const handlePaste = (e: ClipboardEvent) => {
-            if (inputEditorRef.current && document.activeElement?.closest('.monaco-editor')) {
-                e.preventDefault()
-                try {
-                    const text = window.require('electron').clipboard.readText()
-                    const selection = inputEditorRef.current.getSelection()
-                    if (selection) {
-                        inputEditorRef.current.executeEdits('paste', [{
-                            range: selection,
-                            text: text,
-                            forceMoveMarkers: true
-                        }])
-                    }
-                } catch (err) {
-                    const text = e.clipboardData?.getData('text/plain')
-                    if (text && inputEditorRef.current) {
-                        const selection = inputEditorRef.current.getSelection()
-                        if (selection) {
-                            inputEditorRef.current.executeEdits('paste', [{
-                                range: selection,
-                                text: text,
-                                forceMoveMarkers: true
-                            }])
-                        }
-                    }
-                }
-            }
-        }
-
-        document.addEventListener('paste', handlePaste)
-        return () => document.removeEventListener('paste', handlePaste)
-    }, [])
 
     const toggleInput = () => setInputCollapsed(prev => !prev)
 
@@ -139,21 +105,33 @@ const JsonToJsonString = forwardRef<ToolHandle, JsonToJsonStringProps>(({ initia
                                 }}
                                 onMount={(editor, monaco) => {
                                     inputEditorRef.current = editor
+                                    // Ensure paste works reliably in Electron (Cmd/Ctrl+V).
                                     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
-                                        try {
-                                            const text = window.require('electron').clipboard.readText();
-                                            const selection = editor.getSelection();
-                                            if (selection) {
-                                                editor.executeEdits('paste', [{
-                                                    range: selection,
-                                                    text: text,
-                                                    forceMoveMarkers: true
-                                                }]);
+                                        void (async () => {
+                                            const text = await readClipboardText()
+                                            if (typeof text !== 'string') {
+                                                await runDefaultPaste(editor)
+                                                return
                                             }
-                                        } catch (e) {
-                                            console.error('Failed to read from clipboard:', e);
-                                            editor.trigger('keyboard', 'paste', null);
-                                        }
+                                            insertTextAtSelections(editor, text)
+                                        })()
+                                    });
+
+                                    // Extra safety: on macOS Electron, Cmd+V can be handled by the native menu layer,
+                                    // and Monaco keybindings may not fire reliably in some setups. Capture it here too.
+                                    editor.onKeyDown((e: any) => {
+                                        const isPaste = (e?.keyCode === monaco.KeyCode.KeyV) && (e?.metaKey || e?.ctrlKey)
+                                        if (!isPaste) return
+                                        e.preventDefault?.()
+                                        e.stopPropagation?.()
+                                        void (async () => {
+                                            const text = await readClipboardText()
+                                            if (typeof text !== 'string') {
+                                                await runDefaultPaste(editor)
+                                                return
+                                            }
+                                            insertTextAtSelections(editor, text)
+                                        })()
                                     });
                                     setTimeout(() => editor.focus(), 100);
                                 }}

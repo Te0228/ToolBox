@@ -11,6 +11,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { insertTextAtSelections, readClipboardText, runDefaultPaste } from '../../utils/monacoClipboard'
 
 interface MarkdownEditorProps {
   initialContent?: string | null
@@ -65,45 +66,6 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
     }
   }, [initialContent])
 
-  // 添加全局粘贴事件监听
-  useEffect(() => {
-    const handlePaste = (e: ClipboardEvent) => {
-      // 只在编辑器可见且有焦点时处理
-      if (editorRef.current && document.activeElement?.closest('.monaco-editor')) {
-        e.preventDefault()
-        try {
-          const text = window.require('electron').clipboard.readText()
-          const unescaped = unescapeString(text)
-          const selection = editorRef.current.getSelection()
-          if (selection) {
-            editorRef.current.executeEdits('paste', [{
-              range: selection,
-              text: unescaped,
-              forceMoveMarkers: true
-            }])
-          }
-        } catch (err) {
-          // 降级到默认粘贴
-          const text = e.clipboardData?.getData('text/plain')
-          if (text && editorRef.current) {
-            const unescaped = unescapeString(text)
-            const selection = editorRef.current.getSelection()
-            if (selection) {
-              editorRef.current.executeEdits('paste', [{
-                range: selection,
-                text: unescaped,
-                forceMoveMarkers: true
-              }])
-            }
-          }
-        }
-      }
-    }
-
-    document.addEventListener('paste', handlePaste)
-    return () => document.removeEventListener('paste', handlePaste)
-  }, [])
-
   const handleContentChange = (value: string | undefined) => {
     setContent(value || '')
   }
@@ -153,24 +115,35 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
           editorRef.current = editor
 
           // Add paste command (Cmd+V / Ctrl+V)
+          // We handle clipboard read ourselves (Electron clipboard or navigator.clipboard),
+          // and fall back to Monaco's default paste action if reading is blocked.
           editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
-            try {
-              let text = window.require('electron').clipboard.readText();
-              // 处理转义字符
-              text = unescapeString(text);
-              const selection = editor.getSelection();
-              if (selection) {
-                editor.executeEdits('paste', [{
-                  range: selection,
-                  text: text,
-                  forceMoveMarkers: true
-                }]);
+            void (async () => {
+              const text = await readClipboardText()
+              if (typeof text !== 'string') {
+                await runDefaultPaste(editor)
+                return
               }
-            } catch (e) {
-              console.error('Failed to read from clipboard:', e);
-              // Fallback to default paste if electron require fails
-              editor.trigger('keyboard', 'paste', null);
-            }
+
+              insertTextAtSelections(editor, unescapeString(text))
+            })()
+          });
+
+          // Extra safety: on macOS Electron, Cmd+V can be handled by the native menu layer,
+          // and Monaco keybindings may not fire reliably in some setups. Capture it here too.
+          editor.onKeyDown((e: any) => {
+            const isPaste = (e?.keyCode === monaco.KeyCode.KeyV) && (e?.metaKey || e?.ctrlKey)
+            if (!isPaste) return
+            e.preventDefault?.()
+            e.stopPropagation?.()
+            void (async () => {
+              const text = await readClipboardText()
+              if (typeof text !== 'string') {
+                await runDefaultPaste(editor)
+                return
+              }
+              insertTextAtSelections(editor, unescapeString(text))
+            })()
           });
 
           // Focus editor on mount

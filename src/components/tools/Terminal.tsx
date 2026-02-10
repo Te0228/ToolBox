@@ -80,6 +80,41 @@ const Terminal = forwardRef<ToolHandle, TerminalProps>((_props, ref) => {
         term.writeln('')
         term.write('$ ')
 
+        // Handle paste from clipboard
+        const handlePaste = async () => {
+            try {
+                // Try Electron clipboard first
+                const electron = (window as any)?.require?.('electron')
+                let text = electron?.clipboard?.readText?.()
+                
+                if (typeof text !== 'string') {
+                    // Fallback to navigator.clipboard
+                    if (navigator?.clipboard?.readText) {
+                        text = await navigator.clipboard.readText()
+                    }
+                }
+                
+                if (typeof text === 'string' && text) {
+                    // Write pasted text to terminal
+                    commandBufferRef.current += text
+                    term.write(text)
+                }
+            } catch (error) {
+                console.error('Failed to paste:', error)
+            }
+        }
+
+        // Handle keyboard shortcuts
+        term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+            // Handle Cmd+V / Ctrl+V for paste
+            if ((event.metaKey || event.ctrlKey) && event.key === 'v' && !event.shiftKey && !event.altKey) {
+                event.preventDefault()
+                handlePaste()
+                return false
+            }
+            return true
+        })
+
         // Handle terminal input
         term.onData((data) => {
             const code = data.charCodeAt(0)
