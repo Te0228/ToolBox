@@ -11,6 +11,7 @@ import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { insertTextAtSelections, readClipboardText, runDefaultPaste } from '../../utils/monacoClipboard'
+import { parseTree, findNodeAtOffset, Node } from 'jsonc-parser'
 
 interface JsonEditorProps {
   initialContent?: string | null
@@ -339,303 +340,193 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
     return { value: finalValue, parent: finalParent, key: finalKey }
   }, [])
 
-  // 从 Monaco Editor 位置检测 key 路径和值信息
+  // 从 Monaco Editor 位置检测 key 路径和值信息（使用 jsonc-parser）
   const getKeyPathAtPosition = useCallback((editor: any, position: any, jsonContent?: string): { path: string, value: any } | null => {
     const contentToParse = jsonContent || content
     if (!contentToParse.trim()) return null
 
     try {
-      // 解析 JSON
+      // 解析 JSON 对象（用于获取值）
       const jsonObj = JSON.parse(contentToParse)
+      
+      // 解析 JSON 为 AST
+      const tree = parseTree(contentToParse)
+      if (!tree) return null
       
       const model = editor.getModel()
       if (!model) return null
 
-      // 获取当前位置的文本
-      const lineContent = model.getLineContent(position.lineNumber)
-      const offset = position.column - 1
-
-      // 检查当前行是否是 key 行（格式：  "key": value）
-      // 尝试使用 Monaco Editor 的 getWordAtPosition 获取单词
-      const word = model.getWordAtPosition(position)
-      let key: string | null = null
-      let keyStartQuote = -1
-      let keyEndQuote = -1
-
-      if (word) {
-        // Monaco 可能返回包含引号的单词，也可能不包含
-        // 检查单词内容
-        const wordText = word.word
-        const wordStartCol = word.startColumn - 1
-        const wordEndCol = word.endColumn - 1
-        
-        
-        // 检查单词本身是否以引号开头和结尾
-        if (wordText.startsWith('"') && wordText.endsWith('"') && wordText.length > 2) {
-          // 单词包含引号，去掉引号
-          key = wordText.substring(1, wordText.length - 1)
-          keyStartQuote = wordStartCol
-          keyEndQuote = wordEndCol
-        } else {
-          // 检查单词前后是否有引号
-          if (wordStartCol > 0 && wordEndCol < lineContent.length) {
-            const beforeChar = lineContent[wordStartCol - 1]
-            const afterChar = lineContent[wordEndCol]
-            if (beforeChar === '"' && afterChar === '"') {
-              key = wordText
-              keyStartQuote = wordStartCol - 1
-              keyEndQuote = wordEndCol
-            }
-          }
-        }
-      }
-
-      // 如果 getWordAtPosition 没有获取到有效的 key，手动查找引号对
-      if (!key) {
-        // 从光标位置开始，向前查找结束引号（key 的右引号）
-        for (let i = offset; i >= 0; i--) {
-          if (lineContent[i] === '"') {
-            // 检查是否是转义的引号
-            let escapeCount = 0
-            let j = i - 1
-            while (j >= 0 && lineContent[j] === '\\') {
-              escapeCount++
-              j--
-            }
-            // 如果是偶数个反斜杠（包括0个），说明是真正的引号
-            if (escapeCount % 2 === 0) {
-              keyEndQuote = i
-              break
-            }
-          }
-        }
-        
-        if (keyEndQuote < 0) {
-          return null
-        }
-        
-        // 从结束引号向前查找开始引号（key 的左引号）
-        for (let i = keyEndQuote - 1; i >= 0; i--) {
-          if (lineContent[i] === '"') {
-            // 检查是否是转义的引号
-            let escapeCount = 0
-            let j = i - 1
-            while (j >= 0 && lineContent[j] === '\\') {
-              escapeCount++
-              j--
-            }
-            if (escapeCount % 2 === 0) {
-              keyStartQuote = i
-              break
-            }
-          }
-        }
-        
-        if (keyStartQuote < 0 || keyStartQuote >= keyEndQuote) {
-          return null
-        }
-        
-        // 提取 key（去掉引号）
-        key = lineContent.substring(keyStartQuote + 1, keyEndQuote)
+      // 获取光标位置的字符偏移量
+      const offset = model.getOffsetAt(position)
+      
+      // 尝试找到光标位置对应的 AST 节点
+      // 第三个参数 true 表示包含边界（允许在节点边界上也能找到节点）
+      let node = findNodeAtOffset(tree, offset, true)
+      
+      // 如果找不到节点，尝试向前查找（可能光标在空白处或符号上）
+      if (!node && offset > 0) {
+        node = findNodeAtOffset(tree, offset - 1, true)
       }
       
-      if (!key) {
+      // 如果还是找不到，尝试向后查找
+      if (!node && offset < contentToParse.length) {
+        node = findNodeAtOffset(tree, offset + 1, true)
+      }
+      
+      if (!node) return null
+
+      // 辅助函数：找到属性对应的 key
+      const findPropertyKey = (node: Node | null): string | null => {
+        if (!node) return null
+        
+        // 如果节点本身就是属性的 key（string 类型，父节点是 property）
+        if (node.type === 'string' && node.parent?.type === 'property') {
+          return node.value as string
+        }
+        
+        // 如果节点是 property，获取其 key
+        if (node.type === 'property' && node.children && node.children.length >= 2) {
+          const keyNode = node.children[0]
+          if (keyNode && keyNode.type === 'string') {
+            return keyNode.value as string
+          }
+        }
+        
+        // 如果节点是 value，向上查找 property
+        let current: Node | null = node
+        while (current) {
+          const parent: Node | null = current.parent || null
+          if (parent?.type === 'property') {
+            const keyNode = parent.children?.[0]
+            if (keyNode && keyNode.type === 'string') {
+              return keyNode.value as string
+            }
+          }
+          current = parent
+        }
+        
         return null
       }
-      
 
-      // 根据当前行的缩进，确定 key 所在的层级
-      const currentIndent = lineContent.match(/^\s*/)?.[0]?.length || 0
-      const allLines = contentToParse.split('\n')
-      const currentLineNum = position.lineNumber - 1 // 转换为 0-based
-      
-      // 辅助函数：计算当前行在数组中的索引（支持嵌套数组）
-      const findArrayIndex = (arrayStartLine: number, targetLine: number, indentLevel: number): number[] => {
-        const elementIndent = indentLevel + 2 // 数组元素缩进
-        let arrayIndex = 0
+      // 辅助函数：从节点向上遍历构建路径
+      const buildPath = (node: Node | null): { pathParts: Array<string | number>, value: any } | null => {
+        if (!node) return null
         
-        for (let i = arrayStartLine + 1; i <= targetLine; i++) {
-          const line = allLines[i] || ''
-          const lineIndent = line.match(/^\s*/)?.[0]?.length || 0
-          const trimmed = line.trim()
+        // 收集路径段：key 或数组索引
+        const segments: Array<{ type: 'key' | 'index', value: string | number }> = []
+        let current: Node | null = node
+        
+        // 首先尝试找到当前节点对应的 key（如果光标在 value 上）
+        const currentKey = findPropertyKey(node)
+        if (currentKey) {
+          segments.push({ type: 'key', value: currentKey })
+        }
+        
+        // 向上遍历到根节点
+        current = node.parent || null
+        while (current) {
+          const parent: Node | null = (current.parent || null)
           
-          // 如果遇到数组结束，停止
-          if (lineIndent <= indentLevel && trimmed === ']') {
+          if (!parent) {
             break
           }
           
-          // 如果缩进等于元素层级，这是一个新元素
-          if (lineIndent === elementIndent && !trimmed.match(/^[,}\]\]]/)) {
-            // 找到这个元素的结束位置
-            let elementEnd = i
-            let bracketDepth = 0
-            let braceDepth = 0
-            let inString = false
-            let escapeNext = false
-            
-            for (let j = i; j < allLines.length; j++) {
-              const nextLine = allLines[j] || ''
-              const nextIndent = nextLine.match(/^\s*/)?.[0]?.length || 0
-              const nextTrimmed = nextLine.trim()
-              
-              // 计算括号和花括号深度（忽略字符串内的）
-              for (let k = 0; k < nextTrimmed.length; k++) {
-                const char = nextTrimmed[k]
-                if (escapeNext) {
-                  escapeNext = false
-                  continue
-                }
-                if (char === '\\') {
-                  escapeNext = true
-                  continue
-                }
-                if (char === '"' && !escapeNext) {
-                  inString = !inString
-                  continue
-                }
-                if (!inString) {
-                  if (char === '[') bracketDepth++
-                  if (char === ']') bracketDepth--
-                  if (char === '{') braceDepth++
-                  if (char === '}') braceDepth--
-                }
+          if (parent.type === 'property') {
+            // 父节点是属性，获取 key
+            const keyNode = parent.children?.[0]
+            if (keyNode && keyNode.type === 'string') {
+              const key = keyNode.value as string
+              // 避免重复添加相同的 key
+              if (segments.length === 0 || segments[0].type !== 'key' || segments[0].value !== key) {
+                segments.unshift({ type: 'key', value: key })
               }
-              
-              // 如果缩进回到元素层级或更小，且括号和花括号都闭合，说明元素结束
-              if (nextIndent <= elementIndent && bracketDepth === 0 && braceDepth === 0 && !inString) {
-                if (nextTrimmed === ']' || nextTrimmed === ',' || (nextTrimmed.startsWith('}') && j > i)) {
-                  elementEnd = j
+            }
+          } else if (parent.type === 'array') {
+            // 父节点是数组，计算索引
+            const arrayNode = parent
+            let arrayIndex = -1
+            
+            if (arrayNode.children) {
+              for (let i = 0; i < arrayNode.children.length; i++) {
+                const child = arrayNode.children[i]
+                if (child === current) {
+                  arrayIndex = i
                   break
                 }
-              }
-            }
-            
-            // 如果目标行在这个元素范围内
-            if (targetLine >= i && targetLine <= elementEnd) {
-              const result = [arrayIndex]
-              
-              // 检查这个元素是否是嵌套数组
-              if (trimmed.startsWith('[')) {
-                // 递归查找嵌套数组索引
-                const nested = findArrayIndex(i, targetLine, elementIndent)
-                if (nested.length > 0) {
-                  result.push(...nested)
+                // 检查当前节点是否在子节点范围内
+                if (child.offset !== undefined && child.length !== undefined && 
+                    current.offset !== undefined && current.length !== undefined) {
+                  // 使用更宽松的匹配：如果当前节点在子节点的范围内，或者光标在子节点范围内
+                  if ((current.offset >= child.offset && current.offset < child.offset + child.length) ||
+                      (offset >= child.offset && offset < child.offset + child.length)) {
+                    arrayIndex = i
+                    break
+                  }
                 }
               }
-              
-              return result
             }
             
-            arrayIndex++
-          }
-        }
-        
-        return []
-      }
-      
-      // 构建路径：向上查找父对象，同时记录数组索引
-      // 使用更简单的方法：直接通过 JSON 对象结构来查找，而不是依赖文本解析
-      const path: string[] = []
-      let currentDepth = currentIndent
-      
-      // 从当前行向上查找，找到所有父对象的 key
-      for (let i = currentLineNum - 1; i >= 0; i--) {
-        const line = allLines[i] || ''
-        const lineIndent = line.match(/^\s*/)?.[0]?.length || 0
-        
-        // 如果找到更小的缩进，说明找到了父对象
-        if (lineIndent < currentDepth) {
-          const trimmedLine = line.trim()
-          // 检查是否是对象 key 行（格式：  "key": { 或 "key": [）
-          const keyMatch = trimmedLine.match(/^"([^"]+)":\s*[{\[]/)
-          if (keyMatch) {
-            path.unshift(keyMatch[1])
-            currentDepth = lineIndent
-          }
-        }
-      }
-      
-      // 添加当前 key
-      path.push(key)
-      
-      // 根据路径和行号信息，计算数组索引
-      // 策略：从 JSON 对象开始，按照路径访问，当遇到数组时，根据当前行号确定索引
-      let target = jsonObj
-      const finalPathParts: string[] = []
-      
-      for (let i = 0; i < path.length; i++) {
-        const p = path[i]
-        
-        // 访问对象属性
-        if (target == null || typeof target !== 'object' || !(p in target)) {
-          return null
-        }
-        
-        const nextTarget = target[p]
-        
-        // 如果下一个目标是数组，需要计算当前行在数组中的索引
-        if (Array.isArray(nextTarget)) {
-          // 找到这个数组在文本中的开始位置
-          // 通过向上查找找到包含这个 key 的行
-          let arrayKeyLine = -1
-          for (let j = currentLineNum; j >= 0; j--) {
-            const line = allLines[j] || ''
-            if (line.includes(`"${p}"`) && line.includes('[')) {
-              arrayKeyLine = j
-              break
+            if (arrayIndex >= 0) {
+              segments.unshift({ type: 'index', value: arrayIndex })
+            } else {
+              // 如果找不到索引，尝试使用 offset 来计算
+              // 这可以处理光标在数组元素边界上的情况
+              return null
             }
           }
           
-          if (arrayKeyLine >= 0) {
-            const arrayKeyIndent = allLines[arrayKeyLine].match(/^\s*/)?.[0]?.length || 0
-            const arrayIndices = findArrayIndex(arrayKeyLine, currentLineNum, arrayKeyIndent)
-            
-            if (arrayIndices.length > 0) {
-              // 访问数组索引
-              let arrayTarget = nextTarget
-              for (let idx = 0; idx < arrayIndices.length; idx++) {
-                const arrayIndex = arrayIndices[idx]
-                if (arrayIndex < 0 || arrayIndex >= arrayTarget.length) {
-                  return null
-                }
-                arrayTarget = arrayTarget[arrayIndex]
-                
-                // 如果还有更多索引，继续访问嵌套数组
-                if (idx < arrayIndices.length - 1 && !Array.isArray(arrayTarget)) {
-                  return null
-                }
-              }
-              
-              // 构建路径部分
-              const indexStr = arrayIndices.map(idx => `[${idx}]`).join('')
-              finalPathParts.push(`${p}${indexStr}`)
-              
-              if (i === path.length - 1) {
-                // 这是最后一个路径，返回值和路径
-                const finalPath = finalPathParts.join('.')
-                return { path: finalPath, value: arrayTarget }
-              }
-              
-              target = arrayTarget
-              continue
+          current = parent
+        }
+        
+        // 如果没有找到任何路径段，返回 null
+        if (segments.length === 0) {
+          return null
+        }
+        
+        // 根据路径段获取值
+        let value = jsonObj
+        for (const segment of segments) {
+          if (segment.type === 'index') {
+            const index = segment.value as number
+            if (Array.isArray(value) && index >= 0 && index < value.length) {
+              value = value[index]
+            } else {
+              return null
+            }
+          } else {
+            const key = segment.value as string
+            if (value && typeof value === 'object' && key in value) {
+              value = value[key]
+            } else {
+              return null
             }
           }
         }
         
-        // 普通对象属性
-        finalPathParts.push(p)
-        
-        if (i === path.length - 1) {
-          // 这是最后一个路径，返回值和路径
-          const value = nextTarget
-          const finalPath = finalPathParts.join('.')
-          return { path: finalPath, value: value }
-        }
-        
-        target = nextTarget
+        return { pathParts: segments.map(s => s.value), value }
       }
       
-      return null
+      const result = buildPath(node)
+      if (!result) return null
+      
+      // 构建最终路径字符串
+      const pathParts: string[] = []
+      for (let i = 0; i < result.pathParts.length; i++) {
+        const part = result.pathParts[i]
+        if (typeof part === 'number') {
+          // 数组索引，追加到上一个路径部分
+          if (pathParts.length > 0) {
+            pathParts[pathParts.length - 1] += `[${part}]`
+          } else {
+            pathParts.push(`[${part}]`)
+          }
+        } else {
+          pathParts.push(part)
+        }
+      }
+      
+      const finalPath = pathParts.join('.')
+      return { path: finalPath, value: result.value }
     } catch (err) {
       console.error('Error in getKeyPathAtPosition:', err)
       return null
