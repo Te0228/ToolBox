@@ -11,7 +11,7 @@ import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { insertTextAtSelections, readClipboardText, runDefaultPaste } from '../../utils/monacoClipboard'
-import { parseTree, findNodeAtOffset, Node } from 'jsonc-parser'
+import { parseTree, findNodeAtOffset, findNodeAtLocation, Node } from 'jsonc-parser'
 
 interface JsonEditorProps {
   initialContent?: string | null
@@ -25,8 +25,10 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
   const [showMarkdown, setShowMarkdown] = useState(false)
   const [parsedJson, setParsedJson] = useState<any>(null)
   const editorInstanceRef = useRef<any>(null)
+  const monacoRef = useRef<any>(null)
   const contextMenuPositionRef = useRef<any>(null)
   const lastDetectedPathRef = useRef<{ path: string, value: any } | null>(null)
+  const [currentPath, setCurrentPath] = useState<string | null>(null);
 
   useImperativeHandle(ref, () => ({
     getContent: () => content,
@@ -250,288 +252,229 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
     }
   }, [content, isValidating, validateJson])
 
-  // 获取嵌套字段的值和引用信息（支持数组索引，如 data.conversation[0][0].data）
+  // 解析路径字符串为 (string | number)[]，与 buildAccuratePath 使用同一套规则（支持 [1][0].data 这种以数组索引开头的路径）
+  const parsePathString = (path: string): (string | number)[] => {
+    const parts: (string | number)[] = [];
+    let current = '';
+    let i = 0;
+
+    while (i < path.length) {
+      if (path[i] === '.') {
+        if (current) {
+          parts.push(current);
+          current = '';
+        }
+      } else if (path[i] === '[') {
+        if (current) {
+          parts.push(current);
+          current = '';
+        }
+        const closeIndex = path.indexOf(']', i);
+        if (closeIndex !== -1) {
+          const indexStr = path.substring(i + 1, closeIndex);
+          const index = parseInt(indexStr, 10);
+          if (!isNaN(index)) {
+            parts.push(index);
+          }
+          i = closeIndex;
+        }
+      } else {
+        current += path[i];
+      }
+      i++;
+    }
+
+    if (current) {
+      parts.push(current);
+    }
+
+    return parts;
+  };
+
+  // 获取嵌套字段的值和引用信息（支持数组索引及以数组开头的路径，如 [1][0].data 或 data.conversation[0][0].data）
   const getNestedValue = useCallback((obj: any, path: string): { value: any, parent: any, key: string } | null => {
-    const keys = path.split('.')
-    let current = obj
-    
-    // 解析路径段，支持连续的数组索引，如 conversation[0][0]
-    const parsePathSegment = (segment: string): { key: string, indices: number[] } => {
-      // 匹配格式：key[index1][index2]...
-      const match = segment.match(/^([^\[\]]+)((?:\[\d+\])+)?$/)
-      if (!match) {
-        return { key: segment, indices: [] }
-      }
-      
-      const key = match[1]
-      const indicesStr = match[2] || ''
-      // 提取所有索引，如 "[0][1]" -> [0, 1]
-      const indices: number[] = []
-      const indexMatches = indicesStr.matchAll(/\[(\d+)\]/g)
-      for (const m of indexMatches) {
-        indices.push(parseInt(m[1], 10))
-      }
-      
-      return { key, indices }
-    }
-    
-    for (let i = 0; i < keys.length - 1; i++) {
+    const parts = parsePathString(path);
+    if (parts.length === 0) return null;
+
+    let current: any = obj;
+    let parent: any = obj;
+    let key: string = '';
+
+    for (let i = 0; i < parts.length; i++) {
       if (current == null || typeof current !== 'object') {
-        return null
+        return null;
       }
-      
-      const { key, indices } = parsePathSegment(keys[i])
-      
-      // 先访问 key
-      if (!(key in current)) {
-        return null
-      }
-      current = current[key]
-      
-      // 然后依次访问数组索引
-      for (let idx = 0; idx < indices.length; idx++) {
-        const index = indices[idx]
-        if (!Array.isArray(current)) {
-          return null
+      const part = parts[i];
+      parent = current;
+
+      if (typeof part === 'number') {
+        if (!Array.isArray(current) || part < 0 || part >= current.length) {
+          return null;
         }
-        if (current[index] == null) {
-          return null
+        key = String(part);
+        current = current[part];
+      } else {
+        if (!(part in current)) {
+          return null;
         }
-        current = current[index]
+        key = part;
+        current = current[part];
       }
     }
-    
-    // 处理最后一个 key
-    const { key: lastKey, indices: lastIndices } = parsePathSegment(keys[keys.length - 1])
-    
-    // 先访问最后一个 key
-    if (current == null || typeof current !== 'object' || !(lastKey in current)) {
-      return null
-    }
-    const lastValue = current[lastKey]
-    
-    // 如果有数组索引，继续访问
-    let finalValue = lastValue
-    let finalParent = current
-    let finalKey = lastKey
-    
-    if (lastIndices.length > 0) {
-      // 最后一个 key 后面还有数组索引，需要访问数组
-      if (!Array.isArray(lastValue)) {
-        return null
-      }
-      let temp = lastValue
-      for (let i = 0; i < lastIndices.length; i++) {
-        const index = lastIndices[i]
-        if (temp[index] == null) {
-          return null
-        }
-        if (i === lastIndices.length - 1) {
-          // 最后一个索引，这就是我们要的值
-          finalValue = temp[index]
-          finalParent = temp
-          finalKey = String(index)
-        } else {
-          temp = temp[index]
-        }
-      }
-    }
-    
-    return { value: finalValue, parent: finalParent, key: finalKey }
+
+    return { value: current, parent, key };
   }, [])
 
-  // 从 Monaco Editor 位置检测 key 路径和值信息（使用 jsonc-parser）
-  const getKeyPathAtPosition = useCallback((editor: any, position: any, jsonContent?: string): { path: string, value: any } | null => {
-    const contentToParse = jsonContent || content
-    if (!contentToParse.trim()) return null
+  // 替换现有的 getKeyPathAtPosition 函数
+  const getAccurateKeyPath = useCallback((editor: any, position: any, jsonContent?: string): { path: string, value: any } | null => {
+    const contentToParse = jsonContent || content;
+    if (!contentToParse.trim()) return null;
 
     try {
-      // 解析 JSON 对象（用于获取值）
-      const jsonObj = JSON.parse(contentToParse)
-      
-      // 解析 JSON 为 AST
-      const tree = parseTree(contentToParse)
-      if (!tree) return null
-      
-      const model = editor.getModel()
-      if (!model) return null
+      const jsonObj = JSON.parse(contentToParse);
+      const tree = parseTree(contentToParse);
+      if (!tree) return null;
 
-      // 获取光标位置的字符偏移量
-      const offset = model.getOffsetAt(position)
-      
-      // 尝试找到光标位置对应的 AST 节点
-      // 第三个参数 true 表示包含边界（允许在节点边界上也能找到节点）
-      let node = findNodeAtOffset(tree, offset, true)
-      
-      // 如果找不到节点，尝试向前查找（可能光标在空白处或符号上）
-      if (!node && offset > 0) {
-        node = findNodeAtOffset(tree, offset - 1, true)
-      }
-      
-      // 如果还是找不到，尝试向后查找
-      if (!node && offset < contentToParse.length) {
-        node = findNodeAtOffset(tree, offset + 1, true)
-      }
-      
-      if (!node) return null
+      const model = editor.getModel();
+      if (!model) return null;
 
-      // 辅助函数：找到属性对应的 key
-      const findPropertyKey = (node: Node | null): string | null => {
-        if (!node) return null
-        
-        // 如果节点本身就是属性的 key（string 类型，父节点是 property）
-        if (node.type === 'string' && node.parent?.type === 'property') {
-          return node.value as string
-        }
-        
-        // 如果节点是 property，获取其 key
-        if (node.type === 'property' && node.children && node.children.length >= 2) {
-          const keyNode = node.children[0]
-          if (keyNode && keyNode.type === 'string') {
-            return keyNode.value as string
+      const offset = model.getOffsetAt(position);
+      
+      // 1. 扩展搜索范围：不仅查找精确位置，还查找附近的有效节点
+      let node: Node | null = null;
+      const searchRadius = 20; // 向前后各搜索20个字符
+      
+      // 优先尝试精确位置
+      node = findNodeAtOffset(tree, offset, true);
+      
+      // 如果没找到，尝试扩展搜索
+      if (!node) {
+        // 向前搜索
+        for (let i = 1; i <= searchRadius; i++) {
+          if (offset - i >= 0) {
+            node = findNodeAtOffset(tree, offset - i, true);
+            if (node) break;
           }
         }
         
-        // 如果节点是 value，向上查找 property
-        let current: Node | null = node
-        while (current) {
-          const parent: Node | null = current.parent || null
-          if (parent?.type === 'property') {
-            const keyNode = parent.children?.[0]
-            if (keyNode && keyNode.type === 'string') {
-              return keyNode.value as string
+        // 如果还没找到，向后搜索
+        if (!node) {
+          for (let i = 1; i <= searchRadius; i++) {
+            if (offset + i < contentToParse.length) {
+              node = findNodeAtOffset(tree, offset + i, true);
+              if (node) break;
             }
           }
-          current = parent
         }
-        
-        return null
       }
+      
+      if (!node) return null;
 
-      // 辅助函数：从节点向上遍历构建路径
-      const buildPath = (node: Node | null): { pathParts: Array<string | number>, value: any } | null => {
-        if (!node) return null
+      // 2. 改进路径构建逻辑
+      const buildAccuratePath = (targetNode: Node): { path: string, value: any } | null => {
+        // 获取目标节点的完整路径
+        const pathSegments: (string | number)[] = [];
+        let current: Node | null = targetNode;
         
-        // 收集路径段：key 或数组索引
-        const segments: Array<{ type: 'key' | 'index', value: string | number }> = []
-        let current: Node | null = node
-        
-        // 首先尝试找到当前节点对应的 key（如果光标在 value 上）
-        const currentKey = findPropertyKey(node)
-        if (currentKey) {
-          segments.push({ type: 'key', value: currentKey })
-        }
-        
-        // 向上遍历到根节点
-        current = node.parent || null
-        while (current) {
-          const parent: Node | null = (current.parent || null)
+        // 向上遍历到根
+        while (current && current.parent) {
+          const parent = current.parent;
           
-          if (!parent) {
-            break
+          if (parent.type === 'array') {
+            // 数组：计算索引
+            const index = parent.children?.indexOf(current) ?? -1;
+            if (index >= 0) {
+              pathSegments.unshift(index);
+            }
+          } else if (parent.type === 'property') {
+            // 属性：获取键名
+            const keyNode = parent.children?.[0];
+            if (keyNode?.type === 'string') {
+              pathSegments.unshift(keyNode.value as string);
+            }
           }
           
-          if (parent.type === 'property') {
-            // 父节点是属性，获取 key
-            const keyNode = parent.children?.[0]
-            if (keyNode && keyNode.type === 'string') {
-              const key = keyNode.value as string
-              // 避免重复添加相同的 key
-              if (segments.length === 0 || segments[0].type !== 'key' || segments[0].value !== key) {
-                segments.unshift({ type: 'key', value: key })
-              }
-            }
-          } else if (parent.type === 'array') {
-            // 父节点是数组，计算索引
-            const arrayNode = parent
-            let arrayIndex = -1
-            
-            if (arrayNode.children) {
-              for (let i = 0; i < arrayNode.children.length; i++) {
-                const child = arrayNode.children[i]
-                if (child === current) {
-                  arrayIndex = i
-                  break
-                }
-                // 检查当前节点是否在子节点范围内
-                if (child.offset !== undefined && child.length !== undefined && 
-                    current.offset !== undefined && current.length !== undefined) {
-                  // 使用更宽松的匹配：如果当前节点在子节点的范围内，或者光标在子节点范围内
-                  if ((current.offset >= child.offset && current.offset < child.offset + child.length) ||
-                      (offset >= child.offset && offset < child.offset + child.length)) {
-                    arrayIndex = i
-                    break
-                  }
-                }
-              }
-            }
-            
-            if (arrayIndex >= 0) {
-              segments.unshift({ type: 'index', value: arrayIndex })
+          current = parent;
+        }
+        
+        if (pathSegments.length === 0) return null;
+        
+        // 3. 构建路径字符串（正确处理数组索引）
+        let pathStr = '';
+        for (let i = 0; i < pathSegments.length; i++) {
+          const segment = pathSegments[i];
+          if (typeof segment === 'number') {
+            // 数组索引：附加到前一个路径段
+            if (i > 0 && typeof pathSegments[i-1] === 'string') {
+              // 将前一个字符串段替换为带索引的形式
+              const prevPath = pathStr.split('.').slice(0, -1).join('.');
+              const lastSegment = pathStr.split('.').pop() || '';
+              pathStr = prevPath ? `${prevPath}.${lastSegment}[${segment}]` : `${lastSegment}[${segment}]`;
             } else {
-              // 如果找不到索引，尝试使用 offset 来计算
-              // 这可以处理光标在数组元素边界上的情况
-              return null
-            }
-          }
-          
-          current = parent
-        }
-        
-        // 如果没有找到任何路径段，返回 null
-        if (segments.length === 0) {
-          return null
-        }
-        
-        // 根据路径段获取值
-        let value = jsonObj
-        for (const segment of segments) {
-          if (segment.type === 'index') {
-            const index = segment.value as number
-            if (Array.isArray(value) && index >= 0 && index < value.length) {
-              value = value[index]
-            } else {
-              return null
+              pathStr += `[${segment}]`;
             }
           } else {
-            const key = segment.value as string
-            if (value && typeof value === 'object' && key in value) {
-              value = value[key]
-            } else {
-              return null
-            }
+            pathStr += (pathStr ? '.' : '') + segment;
           }
         }
         
-        return { pathParts: segments.map(s => s.value), value }
-      }
-      
-      const result = buildPath(node)
-      if (!result) return null
-      
-      // 构建最终路径字符串
-      const pathParts: string[] = []
-      for (let i = 0; i < result.pathParts.length; i++) {
-        const part = result.pathParts[i]
-        if (typeof part === 'number') {
-          // 数组索引，追加到上一个路径部分
-          if (pathParts.length > 0) {
-            pathParts[pathParts.length - 1] += `[${part}]`
-          } else {
-            pathParts.push(`[${part}]`)
+        // 4. 验证路径有效性并获取值
+        try {
+          let currentValue = jsonObj;
+          const pathParts = parsePathString(pathStr);
+          
+          for (const part of pathParts) {
+            if (typeof part === 'number') {
+              if (!Array.isArray(currentValue) || part >= currentValue.length) {
+                return null;
+              }
+              currentValue = currentValue[part];
+            } else {
+              if (currentValue === null || typeof currentValue !== 'object' || !(part in currentValue)) {
+                return null;
+              }
+              currentValue = currentValue[part];
+            }
           }
-        } else {
-          pathParts.push(part)
+          
+          return { path: pathStr, value: currentValue };
+        } catch {
+          return null;
         }
-      }
+      };
       
-      const finalPath = pathParts.join('.')
-      return { path: finalPath, value: result.value }
+      return buildAccuratePath(node);
     } catch (err) {
-      console.error('Error in getKeyPathAtPosition:', err)
-      return null
+      console.error('Enhanced path detection error:', err);
+      return null;
     }
-  }, [content])
+  }, [content]);
+
+  // 仅替换路径对应值的源码区间，不整份 setContent，以保留编辑器的折叠状态与焦点
+  const applyValueReplace = useCallback((path: string, newText: string, contentToUse: string): boolean => {
+    const tree = parseTree(contentToUse)
+    if (!tree) return false
+    const pathParts = parsePathString(path)
+    const node = findNodeAtLocation(tree, pathParts)
+    if (!node) return false
+    const editor = editorInstanceRef.current
+    if (!editor) return false
+    const model = editor.getModel()
+    if (!model) return false
+    const monaco = monacoRef.current
+    if (!monaco) return false
+    const startPos = model.getPositionAt(node.offset)
+    const endPos = model.getPositionAt(node.offset + node.length)
+    const range = new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column)
+    editor.executeEdits('json-field-edit', [{ range, text: newText }])
+    const newContent = model.getValue()
+    setContent(newContent)
+    setParsedJson(JSON.parse(newContent))
+    setError(null)
+    lastDetectedPathRef.current = null
+    setTimeout(() => editor.focus(), 0)
+    return true
+  }, [])
 
   // 展开功能：将 JSON 字符串解析为对象
   const handleExpandField = useCallback((path: string, editorContent?: string) => {
@@ -549,7 +492,8 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
       
       const fieldInfo = getNestedValue(currentJson, path)
       if (!fieldInfo) {
-        setError(`Field path "${path}" not found`)
+        // 如果自动检测失败，提供更友好的错误信息
+        setError(`无法找到字段路径 "${path}"。请确保点击在有效的 JSON 键上。`);
         return
       }
 
@@ -561,7 +505,7 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
       
       if (valueType !== 'string') {
         const valueStr = JSON.stringify(value).substring(0, 200)
-        setError(`Field "${path}" is not a string (type: ${valueType}, constructor: ${valueConstructor}), cannot expand. Value: ${valueStr}`)
+        setError(`字段 "${path}" 不是字符串类型 (当前类型: ${valueType}, 构造函数: ${valueConstructor}), 无法展开。值: ${valueStr}`)
         return
       }
 
@@ -570,19 +514,22 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
       try {
         const parsed = JSON.parse(stringValue)
         parent[key] = parsed
-        const formatted = JSON.stringify(currentJson, null, indentSize)
-        setContent(formatted)
-        setParsedJson(currentJson)
-        setError(null)
-        // 清除缓存的检测结果，强制下次右键时重新检测
-        lastDetectedPathRef.current = null
+        const newText = JSON.stringify(parsed, null, indentSize)
+        if (!applyValueReplace(path, newText, contentToUse)) {
+          const formatted = JSON.stringify(currentJson, null, indentSize)
+          setContent(formatted)
+          setParsedJson(currentJson)
+          setError(null)
+          lastDetectedPathRef.current = null
+          setTimeout(() => editorInstanceRef.current?.focus(), 0)
+        }
       } catch (parseErr) {
-        setError(`Failed to parse JSON string: ${parseErr instanceof Error ? parseErr.message : 'Invalid JSON'}`)
+        setError(`无法解析 JSON 字符串: ${parseErr instanceof Error ? parseErr.message : '无效的 JSON 格式'}`)
       }
     } catch (err) {
-      setError(`Failed to expand field: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      setError(`展开字段失败: ${err instanceof Error ? err.message : '未知错误'}`)
     }
-  }, [content, getNestedValue, indentSize])
+  }, [content, getNestedValue, indentSize, applyValueReplace])
 
   // 压缩功能：将对象序列化为 JSON 字符串
   const handleCompressField = useCallback((path: string, editorContent?: string) => {
@@ -599,7 +546,7 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
       const currentJson = JSON.parse(contentToUse)
       const fieldInfo = getNestedValue(currentJson, path)
       if (!fieldInfo) {
-        setError(`Field path "${path}" not found`)
+        setError(`无法找到字段路径 "${path}"。请确保点击在有效的 JSON 键上。`)
         return
       }
 
@@ -610,22 +557,25 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
         try {
           const stringified = JSON.stringify(value)
           parent[key] = stringified
-          const formatted = JSON.stringify(currentJson, null, indentSize)
-          setContent(formatted)
-          setParsedJson(currentJson)
-          setError(null)
-          // 清除缓存的检测结果，强制下次右键时重新检测
-          lastDetectedPathRef.current = null
+          const newText = JSON.stringify(stringified)
+          if (!applyValueReplace(path, newText, contentToUse)) {
+            const formatted = JSON.stringify(currentJson, null, indentSize)
+            setContent(formatted)
+            setParsedJson(currentJson)
+            setError(null)
+            lastDetectedPathRef.current = null
+            setTimeout(() => editorInstanceRef.current?.focus(), 0)
+          }
         } catch (stringifyErr) {
-          setError(`Failed to stringify: ${stringifyErr instanceof Error ? stringifyErr.message : 'Unknown error'}`)
+          setError(`序列化失败: ${stringifyErr instanceof Error ? stringifyErr.message : '未知错误'}`)
         }
       } else {
-        setError(`Field "${path}" is not an object, cannot compress`)
+        setError(`字段 "${path}" 不是对象类型, 无法压缩`)
       }
     } catch (err) {
-      setError(`Failed to compress field: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      setError(`压缩字段失败: ${err instanceof Error ? err.message : '未知错误'}`)
     }
-  }, [content, getNestedValue, indentSize])
+  }, [content, getNestedValue, indentSize, applyValueReplace])
 
   const editorOptions = {
     minimap: { enabled: false },
@@ -681,6 +631,19 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
         </ToggleButton>
       </Box>
 
+      {/* 路径显示面板 */}
+      {currentPath && (
+        <Box sx={{ 
+          p: 1, 
+          bgcolor: 'info.light', 
+          fontSize: '0.85rem',
+          borderBottom: '1px solid',
+          borderColor: 'divider'
+        }}>
+          Path: <code>{currentPath}</code>
+        </Box>
+      )}
+
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
         {!showMarkdown ? (
           <Box sx={{ flex: 1, minHeight: 0 }}>
@@ -696,6 +659,7 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
               }}
               onMount={(editor, monaco) => {
                 editorInstanceRef.current = editor
+                monacoRef.current = monaco
                 // Ensure paste works reliably in Electron (Cmd/Ctrl+V).
                 editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
                   void (async () => {
@@ -724,6 +688,21 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                     insertTextAtSelections(editor, text)
                   })()
                 })
+
+                // 添加光标位置变化监听
+                editor.onDidChangeCursorPosition((e: any) => {
+                  const position = e.position;
+                  const model = editor.getModel();
+                  const editorValue = model?.getValue();
+                  const currentContent = editorValue !== undefined && editorValue !== null ? editorValue : content;
+                  
+                  if (currentContent && currentContent.trim()) {
+                    const pathInfo = getAccurateKeyPath(editor, position, currentContent);
+                    setCurrentPath(pathInfo?.path || null);
+                  } else {
+                    setCurrentPath(null);
+                  }
+                });
 
                 // 更新菜单项显示/隐藏的函数（需要在事件处理器之前定义）
                 const updateMenuVisibility = () => {
@@ -813,7 +792,7 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                       const editorValue = model?.getValue()
                       // 明确检查：如果编辑器有值就使用编辑器值，否则使用 state
                       const currentContent = editorValue !== undefined && editorValue !== null ? editorValue : content
-                      const result = getKeyPathAtPosition(editor, position, currentContent)
+                      const result = getAccurateKeyPath(editor, position, currentContent)
                       if (result) {
                         lastDetectedPathRef.current = result
                         // 检测完成后，延迟更新菜单显示/隐藏（确保菜单已经显示）
@@ -839,7 +818,7 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                       const editorValue = model?.getValue()
                       // 明确检查：如果编辑器有值就使用编辑器值，否则使用 state
                       const currentContent = editorValue !== undefined && editorValue !== null ? editorValue : content
-                      const result = getKeyPathAtPosition(editor, pos, currentContent)
+                      const result = getAccurateKeyPath(editor, pos, currentContent)
                       if (result) {
                         lastDetectedPathRef.current = result
                         // 检测完成后，延迟更新菜单显示/隐藏（确保菜单已经显示）
@@ -894,11 +873,11 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                       return
                     }
                     
-                    const result = getKeyPathAtPosition(ed, position, currentContent)
+                    const result = getAccurateKeyPath(ed, position, currentContent)
                     if (result) {
                       handleExpandField(result.path, currentContent)
                     } else {
-                      setError('Unable to detect field at cursor position. Please click on a key name.')
+                      setError('无法检测到光标位置的字段。请确保点击在有效的 JSON 键上。')
                     }
                   }
                 })
@@ -944,11 +923,11 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                       return
                     }
                     
-                    const result = getKeyPathAtPosition(ed, position, currentContent)
+                    const result = getAccurateKeyPath(ed, position, currentContent)
                     if (result) {
                       handleCompressField(result.path, currentContent)
                     } else {
-                      setError('Unable to detect field at cursor position. Please click on a key name.')
+                      setError('无法检测到光标位置的字段。请确保点击在有效的 JSON 键上。')
                     }
                   }
                 })
