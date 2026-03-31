@@ -28,6 +28,9 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
   const monacoRef = useRef<any>(null)
   const contextMenuPositionRef = useRef<any>(null)
   const lastDetectedPathRef = useRef<{ path: string, value: any } | null>(null)
+  const handleExpandFieldRef = useRef<(path: string, editorContent?: string) => void>(() => {})
+  const handleCompressFieldRef = useRef<(path: string, editorContent?: string) => void>(() => {})
+  const mutationObserverRef = useRef<MutationObserver | null>(null)
   const [currentPath, setCurrentPath] = useState<string | null>(null);
 
   useImperativeHandle(ref, () => ({
@@ -577,6 +580,17 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
     }
   }, [content, getNestedValue, indentSize, applyValueReplace])
 
+  // Keep refs in sync so onMount closures always call the latest version
+  useEffect(() => { handleExpandFieldRef.current = handleExpandField }, [handleExpandField])
+  useEffect(() => { handleCompressFieldRef.current = handleCompressField }, [handleCompressField])
+
+  // Cleanup MutationObserver on unmount
+  useEffect(() => {
+    return () => {
+      mutationObserverRef.current?.disconnect()
+    }
+  }, [])
+
   const editorOptions = {
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
@@ -631,19 +645,6 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
         </ToggleButton>
       </Box>
 
-      {/* 路径显示面板 */}
-      {currentPath && (
-        <Box sx={{ 
-          p: 1, 
-          bgcolor: 'info.light', 
-          fontSize: '0.85rem',
-          borderBottom: '1px solid',
-          borderColor: 'divider'
-        }}>
-          Path: <code>{currentPath}</code>
-        </Box>
-      )}
-
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
         {!showMarkdown ? (
           <Box sx={{ flex: 1, minHeight: 0 }}>
@@ -663,29 +664,17 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                 // Ensure paste works reliably in Electron (Cmd/Ctrl+V).
                 editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
                   void (async () => {
-                    const text = await readClipboardText()
-                    if (typeof text !== 'string') {
-                      await runDefaultPaste(editor)
-                      return
+                    try {
+                      const text = await readClipboardText()
+                      if (typeof text === 'string') {
+                        insertTextAtSelections(editor, text)
+                        return
+                      }
+                    } catch {
+                      // ignore
                     }
-                    insertTextAtSelections(editor, text)
-                  })()
-                })
-
-                // Extra safety: on macOS Electron, Cmd+V can be handled by the native menu layer,
-                // and Monaco keybindings may not fire reliably in some setups. Capture it here too.
-                editor.onKeyDown((e: any) => {
-                  const isPaste = (e?.keyCode === monaco.KeyCode.KeyV) && (e?.metaKey || e?.ctrlKey)
-                  if (!isPaste) return
-                  e.preventDefault?.()
-                  e.stopPropagation?.()
-                  void (async () => {
-                    const text = await readClipboardText()
-                    if (typeof text !== 'string') {
-                      await runDefaultPaste(editor)
-                      return
-                    }
-                    insertTextAtSelections(editor, text)
+                    // All clipboard methods failed, fall back to Monaco's built-in paste
+                    await runDefaultPaste(editor)
                   })()
                 })
 
@@ -853,29 +842,29 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                         return
                       }
                       
-                      handleExpandField(path, currentContent)
+                      handleExpandFieldRef.current(path, currentContent)
                       return
                     }
-                    
+
                     // 如果没有保存的信息，尝试实时检测
                     const position = contextMenuPositionRef.current || ed.getPosition()
                     if (!position) {
                       setError('Unable to get cursor position')
                       return
                     }
-                    
+
                     const model = ed.getModel()
                     const editorValue = model?.getValue()
                     const currentContent = editorValue !== undefined && editorValue !== null ? editorValue : content
-                    
+
                     if (!currentContent || !currentContent.trim()) {
                       setError('Editor content is empty')
                       return
                     }
-                    
+
                     const result = getAccurateKeyPath(ed, position, currentContent)
                     if (result) {
-                      handleExpandField(result.path, currentContent)
+                      handleExpandFieldRef.current(result.path, currentContent)
                     } else {
                       setError('无法检测到光标位置的字段。请确保点击在有效的 JSON 键上。')
                     }
@@ -903,29 +892,29 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                         return
                       }
                       
-                      handleCompressField(path, currentContent)
+                      handleCompressFieldRef.current(path, currentContent)
                       return
                     }
-                    
+
                     // 如果没有保存的信息，尝试实时检测
                     const position = contextMenuPositionRef.current || ed.getPosition()
                     if (!position) {
                       setError('Unable to get cursor position')
                       return
                     }
-                    
+
                     const model = ed.getModel()
                     const editorValue = model?.getValue()
                     const currentContent = editorValue !== undefined && editorValue !== null ? editorValue : content
-                    
+
                     if (!currentContent || !currentContent.trim()) {
                       setError('Editor content is empty')
                       return
                     }
-                    
+
                     const result = getAccurateKeyPath(ed, position, currentContent)
                     if (result) {
-                      handleCompressField(result.path, currentContent)
+                      handleCompressFieldRef.current(result.path, currentContent)
                     } else {
                       setError('无法检测到光标位置的字段。请确保点击在有效的 JSON 键上。')
                     }
@@ -935,6 +924,8 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                 // 通过 DOM 操作动态修改菜单项标签
                 const editorContainer = editor.getContainerDomNode()
                 let observerTimeout: NodeJS.Timeout | null = null
+                // Disconnect previous observer if any
+                mutationObserverRef.current?.disconnect()
                 const observer = new MutationObserver((mutations) => {
                   // 检查是否有新的菜单项被添加
                   const hasMenuAdded = mutations.some(mutation => {
@@ -968,7 +959,13 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                   childList: true,
                   subtree: true
                 })
+                mutationObserverRef.current = observer
 
+                // Cleanup observer when editor is disposed
+                editor.onDidDispose(() => {
+                  mutationObserverRef.current?.disconnect()
+                  mutationObserverRef.current = null
+                })
 
                 setTimeout(() => editor.focus(), 100)
               }}
@@ -1029,6 +1026,11 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
           }}
         >
           {error ? `🚫 ${error}` : content.trim() ? '✓ Valid JSON' : 'Ready'}
+          {currentPath && (
+            <Typography component="span" variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', ml: 2 }}>
+              Path: {currentPath}
+            </Typography>
+          )}
         </Typography>
 
         <Stack direction="row" spacing={2} alignItems="center">
