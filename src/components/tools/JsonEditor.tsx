@@ -5,6 +5,8 @@ import FormatAlignLeftIcon from '@mui/icons-material/FormatAlignLeft'
 import CompressIcon from '@mui/icons-material/Compress'
 import PreviewIcon from '@mui/icons-material/Preview'
 import CodeIcon from '@mui/icons-material/Code'
+import LockOpenIcon from '@mui/icons-material/LockOpen'
+import LockIcon from '@mui/icons-material/Lock'
 import { ToolHandle } from '../../types/tool'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -78,6 +80,42 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
       setError(null)
     } catch (err) {
       // Error already handled by validation
+    }
+  }
+
+  // Escape: convert current JSON to an escaped JSON string
+  const handleEscape = () => {
+    if (!content.trim()) return
+    try {
+      const parsed = JSON.parse(content)
+      const escaped = JSON.stringify(JSON.stringify(parsed))
+      setContent(escaped)
+      setParsedJson(null)
+      setError(null)
+    } catch {
+      setError('Cannot escape: content is not valid JSON')
+    }
+  }
+
+  // Unescape: parse an escaped JSON string back to JSON
+  const handleUnescape = () => {
+    if (!content.trim()) return
+    try {
+      let parsed = JSON.parse(content)
+      // If the result is a string, try to parse it as JSON (handles double-encoded)
+      while (typeof parsed === 'string') {
+        try {
+          parsed = JSON.parse(parsed)
+        } catch {
+          break
+        }
+      }
+      const formatted = JSON.stringify(parsed, null, indentSize)
+      setContent(formatted)
+      setParsedJson(parsed)
+      setError(null)
+    } catch {
+      setError('Cannot unescape: content is not a valid JSON string')
     }
   }
 
@@ -630,6 +668,22 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
             size="small"
           >
             Minify
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<LockIcon />}
+            onClick={handleEscape}
+            size="small"
+          >
+            Escape
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<LockOpenIcon />}
+            onClick={handleUnescape}
+            size="small"
+          >
+            Unescape
           </Button>
         </Stack>
 

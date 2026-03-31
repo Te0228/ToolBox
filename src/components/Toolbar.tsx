@@ -1,12 +1,9 @@
 import { AppBar, Toolbar as MuiToolbar, Typography, Button, Box } from '@mui/material'
 import EditNoteIcon from '@mui/icons-material/EditNote'
-import LockOpenIcon from '@mui/icons-material/LockOpen'
-import LockIcon from '@mui/icons-material/Lock'
 import HandymanIcon from '@mui/icons-material/Handyman'
-import LanguageIcon from '@mui/icons-material/Language'
 import DescriptionIcon from '@mui/icons-material/Description'
 
-export type Tool = 'json-editor' | 'json-string-to-json' | 'json-to-json-string' | 'markdown-editor' | 'browser' | 'placeholder'
+export type Tool = 'json-editor' | 'markdown-editor'
 
 interface ToolbarProps {
   activeTool: Tool
@@ -15,10 +12,7 @@ interface ToolbarProps {
 
 const tools = [
   { id: 'json-editor' as Tool, name: 'JSON Editor', icon: <EditNoteIcon /> },
-  { id: 'json-string-to-json' as Tool, name: 'String → JSON', icon: <LockOpenIcon /> },
-  { id: 'json-to-json-string' as Tool, name: 'JSON → String', icon: <LockIcon /> },
   { id: 'markdown-editor' as Tool, name: 'Markdown', icon: <DescriptionIcon /> },
-  { id: 'browser' as Tool, name: 'Browser', icon: <LanguageIcon /> },
 ]
 
 export default function Toolbar({ activeTool, onToolChange }: ToolbarProps) {
@@ -59,4 +53,3 @@ export default function Toolbar({ activeTool, onToolChange }: ToolbarProps) {
     </AppBar>
   )
 }
-

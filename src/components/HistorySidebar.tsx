@@ -10,15 +10,16 @@ import { HistoryItem, historyService } from '../utils/history'
 
 interface HistorySidebarProps {
     activeTool: string
-    selectedHistoryId: string | null
+    activeSessionId: string | null
     onSelect: (id: string) => void
-    onCreate: () => void
+    onNew: () => void
+    onDelete: (id: string) => void
     refreshTrigger: number
 }
 
 const drawerWidth = 250
 
-export default function HistorySidebar({ activeTool, selectedHistoryId, onSelect, onCreate, refreshTrigger }: HistorySidebarProps) {
+export default function HistorySidebar({ activeTool, activeSessionId, onSelect, onNew, onDelete, refreshTrigger }: HistorySidebarProps) {
     const [items, setItems] = useState<HistoryItem[]>([])
 
     useEffect(() => {
@@ -28,12 +29,6 @@ export default function HistorySidebar({ activeTool, selectedHistoryId, onSelect
         }
         loadHistory()
     }, [activeTool, refreshTrigger])
-
-    const handleDelete = (e: React.MouseEvent, id: string) => {
-        e.stopPropagation()
-        historyService.delete(id)
-        setItems(historyService.getHistory(activeTool))
-    }
 
     const handleClear = () => {
         if (confirm('Are you sure you want to clear all history for this tool?')) {
@@ -66,7 +61,7 @@ export default function HistorySidebar({ activeTool, selectedHistoryId, onSelect
             <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'background.default' }}>
                 <Typography variant="subtitle1" fontWeight="bold">History</Typography>
                 <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    <IconButton size="small" onClick={onCreate} title="Add to History">
+                    <IconButton size="small" onClick={onNew} title="New">
                         <AddIcon fontSize="small" />
                     </IconButton>
                     {items.length > 0 && (
@@ -91,13 +86,13 @@ export default function HistorySidebar({ activeTool, selectedHistoryId, onSelect
                             key={item.id}
                             disablePadding
                             secondaryAction={
-                                <IconButton edge="end" aria-label="delete" size="small" onClick={(e) => handleDelete(e, item.id)}>
+                                <IconButton edge="end" aria-label="delete" size="small" onClick={() => onDelete(item.id)}>
                                     <DeleteIcon fontSize="small" />
                                 </IconButton>
                             }
                         >
                             <ListItemButton
-                                selected={selectedHistoryId === item.id}
+                                selected={activeSessionId === item.id}
                                 onClick={() => onSelect(item.id)}
                                 sx={{
                                     borderLeft: '3px solid transparent',
@@ -124,7 +119,7 @@ export default function HistorySidebar({ activeTool, selectedHistoryId, onSelect
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',
                                             fontFamily: 'monospace',
-                                            fontWeight: selectedHistoryId === item.id ? 600 : 400
+                                            fontWeight: activeSessionId === item.id ? 600 : 400
                                         }
                                     }}
                                     secondaryTypographyProps={{

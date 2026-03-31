@@ -58,7 +58,14 @@ class HistoryService {
       .sort((a, b) => b.timestamp - a.timestamp)
   }
 
-  add(toolId: string, content: string, summary?: string) {
+  getById(id: string): HistoryItem | undefined {
+    return this.history.find(item => item.id === id)
+  }
+
+  /** Create a new history entry. Returns null if content is empty. */
+  create(toolId: string, content: string, summary?: string): HistoryItem | null {
+    if (!content || !content.trim()) return null
+
     const newItem: HistoryItem = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       toolId,
@@ -66,8 +73,8 @@ class HistoryService {
       timestamp: Date.now(),
       summary
     }
-    
-    // Keep only last 50 items per tool to avoid bloating
+
+    // Keep only last 50 items per tool
     const toolHistory = this.getHistory(toolId)
     if (toolHistory.length >= 50) {
       const idsToRemove = toolHistory.slice(49).map(h => h.id)
@@ -79,11 +86,30 @@ class HistoryService {
     return newItem
   }
 
+  /** Update an existing history entry's content. Removes the entry if content becomes empty. */
+  update(id: string, content: string) {
+    const item = this.history.find(h => h.id === id)
+    if (!item) return
+
+    if (!content || !content.trim()) {
+      // Content became empty — remove from history
+      this.history = this.history.filter(h => h.id !== id)
+      this.save()
+      return
+    }
+
+    if (item.content === content) return // No change
+
+    item.content = content
+    item.timestamp = Date.now()
+    this.save()
+  }
+
   delete(id: string) {
     this.history = this.history.filter(item => item.id !== id)
     this.save()
   }
-  
+
   clear(toolId: string) {
     this.history = this.history.filter(item => item.toolId !== toolId)
     this.save()
