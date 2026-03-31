@@ -83,14 +83,12 @@ function createWindow() {
   return mainWindow
 }
 
-// Single instance lock - only allow one instance of the app
-const gotTheLock = app.requestSingleInstanceLock()
+// Single instance lock — dev and production use separate keys so they don't conflict
+const gotTheLock = app.requestSingleInstanceLock({ key: isDev ? 'dev' : 'production' })
 
 if (!gotTheLock) {
-  // If another instance is already running, quit this one
   app.quit()
 } else {
-  // When someone tries to run a second instance, focus the existing window
   app.on('second-instance', () => {
     const windows = BrowserWindow.getAllWindows()
     if (windows.length > 0) {
