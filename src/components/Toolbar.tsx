@@ -21,7 +21,7 @@ export default function Toolbar({ activeTool, onToolChange }: ToolbarProps) {
       position="static"
       elevation={0}
       sx={{
-        bgcolor: '#FFFFFF',
+        bgcolor: 'background.paper',
         color: 'text.primary',
         WebkitAppRegion: 'drag',
         paddingLeft: '80px',

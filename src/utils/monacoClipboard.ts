@@ -1,13 +1,8 @@
-type MonacoEditorLike = {
-  getSelections?: () => any[] | null
-  getSelection?: () => any | null
-  executeEdits?: (source: string, edits: any[]) => void
-  trigger?: (source: string, handlerId: string, payload: any) => void
-  getAction?: (id: string) => { run: () => Promise<void> } | null
-}
+import type { editor, KeyMod, KeyCode } from 'monaco-editor'
+
+type IStandaloneCodeEditor = editor.IStandaloneCodeEditor
 
 export async function readClipboardText(): Promise<string | null> {
-  // Prefer Electron clipboard when available (works even when navigator.clipboard is blocked).
   try {
     const electron = (window as any)?.require?.('electron')
     if (electron?.clipboard) {
@@ -15,65 +10,85 @@ export async function readClipboardText(): Promise<string | null> {
       if (typeof text === 'string') return text
     }
   } catch {
-    // ignore – electron.clipboard not available
+    // not available
   }
 
-  // Fallback: navigator.clipboard (may require secure context / focus)
   try {
     if (navigator?.clipboard?.readText) {
       return await navigator.clipboard.readText()
     }
   } catch {
-    // ignore
-  }
-
-  // Last resort: use deprecated execCommand-based approach
-  try {
-    const textarea = document.createElement('textarea')
-    textarea.style.position = 'fixed'
-    textarea.style.opacity = '0'
-    document.body.appendChild(textarea)
-    textarea.focus()
-    document.execCommand('paste')
-    const text = textarea.value
-    document.body.removeChild(textarea)
-    if (text) return text
-  } catch {
-    // ignore
+    // not available
   }
 
   return null
 }
 
-export function insertTextAtSelections(editor: MonacoEditorLike, text: string) {
-  const single = editor.getSelection?.() || null
-  const selections = editor.getSelections?.() || (single ? [single] : [])
-  const validSelections = (selections || []).filter(Boolean)
-  if (!validSelections.length) return
+export function insertTextAtSelections(ed: IStandaloneCodeEditor, text: string) {
+  const single = ed.getSelection()
+  const selections = ed.getSelections() || (single ? [single] : [])
+  if (!selections.length) return
 
-  editor.executeEdits?.('clipboard', validSelections.map((range) => ({
+  ed.executeEdits('clipboard', selections.map((range) => ({
     range,
     text,
     forceMoveMarkers: true,
   })))
 }
 
-export async function runDefaultPaste(editor: MonacoEditorLike) {
+async function runDefaultPaste(ed: IStandaloneCodeEditor) {
   try {
-    const action = editor.getAction?.('editor.action.clipboardPasteAction')
+    const action = ed.getAction('editor.action.clipboardPasteAction')
     if (action) {
       await action.run()
       return
     }
   } catch {
-    // ignore
+    // ignored
   }
-
-  // Fallback (older Monaco versions / edge cases)
   try {
-    editor.trigger?.('keyboard', 'editor.action.clipboardPasteAction', null)
+    ed.trigger('keyboard', 'editor.action.clipboardPasteAction', null)
   } catch {
-    // ignore
+    // ignored
   }
 }
 
+/**
+ * Set up paste (Cmd/Ctrl+V) for a Monaco editor inside Electron.
+ *
+ * Uses addCommand (Monaco keybinding) as primary handler and onKeyDown
+ * (DOM level) as backup for macOS where the native Edit menu can
+ * intercept Cmd+V before Monaco keybindings fire.
+ * A timestamp guard prevents double-paste when both fire.
+ */
+export function setupPasteHandler(
+  ed: IStandaloneCodeEditor,
+  monaco: { KeyMod: typeof KeyMod; KeyCode: typeof KeyCode },
+  transform?: (text: string) => string,
+) {
+  let lastPasteTs = 0
+
+  const doPaste = async () => {
+    const now = Date.now()
+    if (now - lastPasteTs < 100) return
+    lastPasteTs = now
+
+    const text = await readClipboardText()
+    if (typeof text === 'string') {
+      insertTextAtSelections(ed, transform ? transform(text) : text)
+      return
+    }
+    await runDefaultPaste(ed)
+  }
+
+  ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
+    void doPaste()
+  })
+
+  ed.onKeyDown((e: any) => {
+    if (!(e?.keyCode === monaco.KeyCode.KeyV && (e?.metaKey || e?.ctrlKey))) return
+    e.preventDefault?.()
+    e.stopPropagation?.()
+    void doPaste()
+  })
+}

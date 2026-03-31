@@ -7,7 +7,6 @@ import MarkdownEditor from './components/tools/MarkdownEditor'
 import { historyService } from './utils/history'
 import { ToolHandle } from './types/tool'
 
-
 function App() {
   const [activeTool, setActiveTool] = useState<Tool>('json-editor')
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
@@ -55,7 +54,7 @@ function App() {
     }
   }, [activeTool, saveCurrentSession])
 
-  const handleHistorySelect = (id: string) => {
+  const handleHistorySelect = useCallback((id: string) => {
     saveCurrentSession()
 
     const item = historyService.getById(id)
@@ -66,9 +65,9 @@ function App() {
         [activeTool]: item.content
       }))
     }
-  }
+  }, [activeTool, saveCurrentSession])
 
-  const handleNew = () => {
+  const handleNew = useCallback(() => {
     saveCurrentSession()
     setActiveSessionId(null)
     toolRefs.current[activeTool]?.clearContent()
@@ -76,7 +75,10 @@ function App() {
       ...prev,
       [activeTool]: ''
     }))
-  }
+  }, [activeTool, saveCurrentSession])
+
+  const jsonEditorRef = useCallback((ref: ToolHandle | null) => { toolRefs.current['json-editor'] = ref }, [])
+  const markdownEditorRef = useCallback((ref: ToolHandle | null) => { toolRefs.current['markdown-editor'] = ref }, [])
 
   const renderAllTools = () => {
     const tools: Array<{ id: Tool; component: JSX.Element }> = [
@@ -85,7 +87,7 @@ function App() {
         component: (
           <JsonEditor
             initialContent={toolContents['json-editor']}
-            ref={(ref) => { toolRefs.current['json-editor'] = ref }}
+            ref={jsonEditorRef}
           />
         )
       },
@@ -94,7 +96,7 @@ function App() {
         component: (
           <MarkdownEditor
             initialContent={toolContents['markdown-editor']}
-            ref={(ref) => { toolRefs.current['markdown-editor'] = ref }}
+            ref={markdownEditorRef}
           />
         )
       },

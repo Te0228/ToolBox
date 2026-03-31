@@ -11,49 +11,15 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { insertTextAtSelections, readClipboardText, runDefaultPaste } from '../../utils/monacoClipboard'
+import { setupPasteHandler } from '../../utils/monacoClipboard'
+import { unescapeJsonString } from '../../utils/stringUtils'
+import { baseEditorOptions } from '../../utils/editorConfig'
 
 interface MarkdownEditorProps {
   initialContent?: string | null
 }
 
 type ViewMode = 'edit' | 'preview' | 'split'
-
-// 处理 JSON 字符串中的所有转义字符
-const unescapeString = (str: string): string => {
-  // 如果字符串被引号包裹，先尝试作为 JSON 解析
-  const trimmed = str.trim()
-  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || 
-      (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
-    try {
-      // 尝试作为 JSON 字符串解析
-      return JSON.parse(trimmed)
-    } catch (e) {
-      // 如果 JSON 解析失败，继续使用手动替换
-    }
-  }
-
-  // 手动处理所有 JSON 转义字符（使用单次正则匹配避免顺序问题）
-  return str.replace(/\\(n|r|t|b|f|"|'|\/|\\|u[0-9a-fA-F]{4})/g, (match, seq) => {
-    switch (seq) {
-      case 'n': return '\n'
-      case 'r': return '\r'
-      case 't': return '\t'
-      case 'b': return '\b'
-      case 'f': return '\f'
-      case '"': return '"'
-      case "'": return "'"
-      case '/': return '/'
-      case '\\': return '\\'
-      default:
-        // Unicode escape: \uXXXX
-        if (seq.startsWith('u')) {
-          return String.fromCharCode(parseInt(seq.substring(1), 16))
-        }
-        return match
-    }
-  })
-}
 
 const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialContent }, ref) => {
   const [content, setContent] = useState(initialContent || '')
@@ -90,20 +56,13 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
 
   const handleUnescape = () => {
     if (!content.trim()) return
-    const unescaped = unescapeString(content)
+    const unescaped = unescapeJsonString(content)
     setContent(unescaped)
   }
 
   const editorOptions = {
-    minimap: { enabled: false },
-    scrollBeyondLastLine: false,
-    wordWrap: 'on' as const,
-    automaticLayout: true,
-    fontFamily: "'Fira Code', monospace",
-    fontSize: 14,
+    ...baseEditorOptions,
     lineNumbers: 'on' as const,
-    formatOnPaste: true,
-    formatOnType: true,
   }
 
   const renderEditor = () => (
@@ -119,26 +78,9 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
         }}
         theme="vs"
         onMount={(editor, monaco) => {
-          // Store editor reference
           editorRef.current = editor
-
-          // Add paste command (Cmd+V / Ctrl+V)
-          // We handle clipboard read ourselves (Electron clipboard or navigator.clipboard),
-          // and fall back to Monaco's default paste action if reading is blocked.
-          editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
-            void (async () => {
-              const text = await readClipboardText()
-              if (typeof text !== 'string') {
-                await runDefaultPaste(editor)
-                return
-              }
-
-              insertTextAtSelections(editor, unescapeString(text))
-            })()
-          });
-
-          // Focus editor on mount
-          setTimeout(() => editor.focus(), 100);
+          setupPasteHandler(editor, monaco, unescapeJsonString)
+          setTimeout(() => editor.focus(), 100)
         }}
       />
     </Box>

@@ -1,9 +1,9 @@
-import { app, BrowserWindow, Menu, ipcMain } from 'electron'
+import { app, BrowserWindow, Menu, ipcMain, MenuItemConstructorOptions } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 
 const createMenu = () => {
-  const template = [
+  const template: MenuItemConstructorOptions[] = [
     {
       label: 'Edit',
       submenu: [
@@ -48,10 +48,10 @@ const createMenu = () => {
         { type: 'separator' },
         { role: 'quit' },
       ],
-    } as any)
+    })
   }
 
-  const menu = Menu.buildFromTemplate(template as any)
+  const menu = Menu.buildFromTemplate(template)
   Menu.setApplicationMenu(menu)
 }
 
@@ -127,6 +127,7 @@ app.whenReady().then(() => {
 ipcMain.handle('get-user-data-path', () => {
   return app.getPath('userData')
 })
+
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

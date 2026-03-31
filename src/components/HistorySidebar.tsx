@@ -7,9 +7,10 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
 import AddIcon from '@mui/icons-material/Add'
 import { HistoryItem, historyService } from '../utils/history'
+import { Tool } from './Toolbar'
 
 interface HistorySidebarProps {
-    activeTool: string
+    activeTool: Tool
     activeSessionId: string | null
     onSelect: (id: string) => void
     onNew: () => void
@@ -24,11 +25,7 @@ export default function HistorySidebar({ activeTool, activeSessionId, onSelect, 
     const [items, setItems] = useState<HistoryItem[]>([])
 
     useEffect(() => {
-        const loadHistory = async () => {
-            await historyService.init()
-            setItems(historyService.getHistory(activeTool))
-        }
-        loadHistory()
+        setItems(historyService.getHistory(activeTool))
     }, [activeTool, refreshTrigger])
 
     const handleClear = () => {
@@ -56,7 +53,7 @@ export default function HistorySidebar({ activeTool, activeSessionId, onSelect, 
                     boxSizing: 'border-box',
                     position: 'relative',
                     height: '100%',
-                    bgcolor: '#F8F8FA',
+                    bgcolor: 'background.default',
                     border: 'none',
                     borderRight: '1px solid',
                     borderColor: 'divider',
