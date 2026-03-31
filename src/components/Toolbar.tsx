@@ -11,38 +11,58 @@ interface ToolbarProps {
 }
 
 const tools = [
-  { id: 'json-editor' as Tool, name: 'JSON Editor', icon: <EditNoteIcon /> },
-  { id: 'markdown-editor' as Tool, name: 'Markdown', icon: <DescriptionIcon /> },
+  { id: 'json-editor' as Tool, name: 'JSON', icon: <EditNoteIcon sx={{ fontSize: 18 }} /> },
+  { id: 'markdown-editor' as Tool, name: 'Markdown', icon: <DescriptionIcon sx={{ fontSize: 18 }} /> },
 ]
 
 export default function Toolbar({ activeTool, onToolChange }: ToolbarProps) {
   return (
     <AppBar
       position="static"
+      elevation={0}
       sx={{
-        zIndex: (theme) => theme.zIndex.drawer + 1,
+        bgcolor: '#FFFFFF',
+        color: 'text.primary',
         WebkitAppRegion: 'drag',
-        paddingLeft: '80px'
+        paddingLeft: '80px',
+        borderBottom: '1px solid',
+        borderColor: 'divider',
       }}
     >
-      <MuiToolbar variant="dense">
-        <Typography variant="h6" component="div" sx={{ mr: 4, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <HandymanIcon sx={{ fontSize: 28 }} />
-          Dev Toolbox
+      <MuiToolbar variant="dense" sx={{ minHeight: 42 }}>
+        <Typography
+          variant="h6"
+          component="div"
+          sx={{
+            mr: 4,
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0.75,
+            color: 'text.primary',
+            fontSize: '0.85rem',
+          }}
+        >
+          <HandymanIcon sx={{ fontSize: 20, color: 'primary.main' }} />
+          ToolBox
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1, height: '100%' }}>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
           {tools.map((tool) => (
             <Button
               key={tool.id}
-              color="inherit"
               startIcon={tool.icon}
               onClick={() => onToolChange(tool.id)}
+              size="small"
               sx={{
                 WebkitAppRegion: 'no-drag',
-                opacity: activeTool === tool.id ? 1 : 0.7,
-                borderBottom: activeTool === tool.id ? '2px solid white' : '2px solid transparent',
-                borderRadius: 0,
-                '&:hover': { opacity: 1 }
+                color: activeTool === tool.id ? 'primary.main' : 'text.secondary',
+                bgcolor: activeTool === tool.id ? 'action.selected' : 'transparent',
+                fontWeight: activeTool === tool.id ? 600 : 400,
+                borderRadius: 1.5,
+                px: 1.5,
+                '&:hover': {
+                  bgcolor: activeTool === tool.id ? 'action.selected' : 'action.hover',
+                },
               }}
             >
               {tool.name}

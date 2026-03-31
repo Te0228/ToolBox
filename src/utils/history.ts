@@ -67,7 +67,7 @@ class HistoryService {
     if (!content || !content.trim()) return null
 
     const newItem: HistoryItem = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      id: Date.now().toString() + Math.random().toString(36).substring(2, 11),
       toolId,
       content,
       timestamp: Date.now(),

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef } from 'react'
 import Editor from '@monaco-editor/react'
-import { Box, Button, Select, MenuItem, Typography, Stack, Paper, Chip, ToggleButton } from '@mui/material'
+import { Box, Button, Select, MenuItem, Typography, Stack, Paper, Chip } from '@mui/material'
 import FormatAlignLeftIcon from '@mui/icons-material/FormatAlignLeft'
 import CompressIcon from '@mui/icons-material/Compress'
 import PreviewIcon from '@mui/icons-material/Preview'
@@ -33,6 +33,7 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
   const handleExpandFieldRef = useRef<(path: string, editorContent?: string) => void>(() => {})
   const handleCompressFieldRef = useRef<(path: string, editorContent?: string) => void>(() => {})
   const mutationObserverRef = useRef<MutationObserver | null>(null)
+  const observerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [currentPath, setCurrentPath] = useState<string | null>(null);
 
   useImperativeHandle(ref, () => ({
@@ -386,23 +387,21 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
       const searchRadius = 20; // 向前后各搜索20个字符
       
       // 优先尝试精确位置
-      node = findNodeAtOffset(tree, offset, true);
-      
+      node = findNodeAtOffset(tree, offset, true) ?? null;
+
       // 如果没找到，尝试扩展搜索
       if (!node) {
-        // 向前搜索
         for (let i = 1; i <= searchRadius; i++) {
           if (offset - i >= 0) {
-            node = findNodeAtOffset(tree, offset - i, true);
+            node = findNodeAtOffset(tree, offset - i, true) ?? null;
             if (node) break;
           }
         }
-        
-        // 如果还没找到，向后搜索
+
         if (!node) {
           for (let i = 1; i <= searchRadius; i++) {
             if (offset + i < contentToParse.length) {
-              node = findNodeAtOffset(tree, offset + i, true);
+              node = findNodeAtOffset(tree, offset + i, true) ?? null;
               if (node) break;
             }
           }
@@ -419,7 +418,7 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
         
         // 向上遍历到根
         while (current && current.parent) {
-          const parent = current.parent;
+          const parent: Node = current.parent;
           
           if (parent.type === 'array') {
             // 数组：计算索引
@@ -622,10 +621,13 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
   useEffect(() => { handleExpandFieldRef.current = handleExpandField }, [handleExpandField])
   useEffect(() => { handleCompressFieldRef.current = handleCompressField }, [handleCompressField])
 
-  // Cleanup MutationObserver on unmount
+  // Cleanup MutationObserver and debounce timeout on unmount
   useEffect(() => {
     return () => {
       mutationObserverRef.current?.disconnect()
+      if (observerTimeoutRef.current) {
+        clearTimeout(observerTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -641,62 +643,51 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
     formatOnType: true,
   }
 
+  const toolbarButtonSx = {
+    color: 'text.secondary',
+    fontSize: '0.75rem',
+    fontWeight: 500,
+    px: 1,
+    py: 0.25,
+    minWidth: 0,
+    '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
+  }
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.default' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.paper' }}>
       <Box sx={{
         display: 'flex',
         justifyContent: 'space-between',
-        p: 1,
-        bgcolor: 'background.default',
-        borderBottom: 1,
-        borderColor: 'divider'
+        alignItems: 'center',
+        px: 1,
+        py: 0.5,
       }}>
-
-        <Stack direction="row" spacing={1}>
-          <Button
-            variant="outlined"
-            startIcon={<FormatAlignLeftIcon />}
-            onClick={handleFormat}
-            size="small"
-          >
+        <Stack direction="row" spacing={0.25}>
+          <Button onClick={handleFormat} size="small" sx={toolbarButtonSx} startIcon={<FormatAlignLeftIcon sx={{ fontSize: '16px !important' }} />}>
             Format
           </Button>
-          <Button
-            variant="outlined"
-            startIcon={<CompressIcon />}
-            onClick={handleMinify}
-            size="small"
-          >
+          <Button onClick={handleMinify} size="small" sx={toolbarButtonSx} startIcon={<CompressIcon sx={{ fontSize: '16px !important' }} />}>
             Minify
           </Button>
-          <Button
-            variant="outlined"
-            startIcon={<LockIcon />}
-            onClick={handleEscape}
-            size="small"
-          >
+          <Button onClick={handleEscape} size="small" sx={toolbarButtonSx} startIcon={<LockIcon sx={{ fontSize: '16px !important' }} />}>
             Escape
           </Button>
-          <Button
-            variant="outlined"
-            startIcon={<LockOpenIcon />}
-            onClick={handleUnescape}
-            size="small"
-          >
+          <Button onClick={handleUnescape} size="small" sx={toolbarButtonSx} startIcon={<LockOpenIcon sx={{ fontSize: '16px !important' }} />}>
             Unescape
           </Button>
         </Stack>
 
-        <ToggleButton
-          value="markdown"
-          selected={showMarkdown}
-          onChange={() => setShowMarkdown(!showMarkdown)}
+        <Button
+          onClick={() => setShowMarkdown(!showMarkdown)}
           size="small"
-          sx={{ px: 2 }}
+          sx={{
+            ...toolbarButtonSx,
+            ...(showMarkdown && { color: 'primary.main', bgcolor: 'action.selected' }),
+          }}
+          startIcon={showMarkdown ? <CodeIcon sx={{ fontSize: '16px !important' }} /> : <PreviewIcon sx={{ fontSize: '16px !important' }} />}
         >
-          {showMarkdown ? <CodeIcon sx={{ mr: 0.5 }} /> : <PreviewIcon sx={{ mr: 0.5 }} />}
-          {showMarkdown ? 'Hide Preview' : 'Show Markdown'}
-        </ToggleButton>
+          {showMarkdown ? 'Code' : 'Preview'}
+        </Button>
       </Box>
 
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
@@ -876,7 +867,7 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                 })
 
                 // 添加"展开"菜单项
-                const expandAction = editor.addAction({
+                editor.addAction({
                   id: 'expand-json-field',
                   label: '展开',
                   contextMenuGroupId: 'navigation',
@@ -926,7 +917,7 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                 })
                 
                 // 添加"压缩"菜单项
-                const compressAction = editor.addAction({
+                editor.addAction({
                   id: 'compress-json-field',
                   label: '压缩',
                   contextMenuGroupId: 'navigation',
@@ -977,7 +968,6 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                 
                 // 通过 DOM 操作动态修改菜单项标签
                 const editorContainer = editor.getContainerDomNode()
-                let observerTimeout: NodeJS.Timeout | null = null
                 // Disconnect previous observer if any
                 mutationObserverRef.current?.disconnect()
                 const observer = new MutationObserver((mutations) => {
@@ -993,10 +983,10 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
                   
                   if (hasMenuAdded) {
                     // 防抖处理
-                    if (observerTimeout) {
-                      clearTimeout(observerTimeout)
+                    if (observerTimeoutRef.current) {
+                      clearTimeout(observerTimeoutRef.current)
                     }
-                    observerTimeout = setTimeout(() => {
+                    observerTimeoutRef.current = setTimeout(() => {
                       updateMenuVisibility()
                     }, 50)
                   }
@@ -1062,30 +1052,43 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          p: 0.5,
-          px: 2,
-          bgcolor: error ? '#fff5f5' : 'background.default',
-          borderTop: 1,
-          borderColor: error ? '#e74c3c' : 'divider',
-          borderTopWidth: error ? 2 : 1,
-          height: 36
+          px: 1.5,
+          py: 0.25,
+          bgcolor: error ? 'rgba(229,72,77,0.05)' : 'background.default',
+          borderTop: '1px solid',
+          borderColor: error ? 'rgba(229,72,77,0.3)' : 'divider',
+          height: 32,
         }}
       >
-        <Typography
-          variant="caption"
-          sx={{
-            fontFamily: 'monospace',
-            color: error ? 'error.main' : 'success.main',
-            fontWeight: 600
-          }}
-        >
-          {error ? `🚫 ${error}` : content.trim() ? '✓ Valid JSON' : 'Ready'}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, overflow: 'hidden' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+              color: error ? 'error.main' : 'success.main',
+              fontWeight: 500,
+              fontSize: '0.65rem',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {error ? error : content.trim() ? 'Valid JSON' : 'Ready'}
+          </Typography>
           {currentPath && (
-            <Typography component="span" variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', ml: 2 }}>
-              Path: {currentPath}
+            <Typography
+              variant="caption"
+              sx={{
+                fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+                color: 'text.secondary',
+                fontSize: '0.65rem',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {currentPath}
             </Typography>
           )}
-        </Typography>
+        </Box>
 
         <Stack direction="row" spacing={2} alignItems="center">
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1111,5 +1114,7 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
     </Box>
   )
 })
+
+JsonEditor.displayName = 'JsonEditor'
 
 export default JsonEditor

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
     Drawer, Box, Typography, List, ListItem, ListItemText,
-    IconButton, Divider, ListItemButton, alpha
+    IconButton, Divider, ListItemButton
 } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
@@ -14,12 +14,13 @@ interface HistorySidebarProps {
     onSelect: (id: string) => void
     onNew: () => void
     onDelete: (id: string) => void
+    onClear: () => void
     refreshTrigger: number
 }
 
-const drawerWidth = 250
+const drawerWidth = 240
 
-export default function HistorySidebar({ activeTool, activeSessionId, onSelect, onNew, onDelete, refreshTrigger }: HistorySidebarProps) {
+export default function HistorySidebar({ activeTool, activeSessionId, onSelect, onNew, onDelete, onClear, refreshTrigger }: HistorySidebarProps) {
     const [items, setItems] = useState<HistoryItem[]>([])
 
     useEffect(() => {
@@ -31,9 +32,10 @@ export default function HistorySidebar({ activeTool, activeSessionId, onSelect, 
     }, [activeTool, refreshTrigger])
 
     const handleClear = () => {
-        if (confirm('Are you sure you want to clear all history for this tool?')) {
+        if (confirm('Clear all history for this tool?')) {
             historyService.clear(activeTool)
             setItems([])
+            onClear()
         }
     }
 
@@ -54,30 +56,36 @@ export default function HistorySidebar({ activeTool, activeSessionId, onSelect, 
                     boxSizing: 'border-box',
                     position: 'relative',
                     height: '100%',
-                    borderRight: '1px solid rgba(0, 0, 0, 0.12)'
+                    bgcolor: '#F8F8FA',
+                    border: 'none',
+                    borderRight: '1px solid',
+                    borderColor: 'divider',
                 },
             }}
         >
-            <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'background.default' }}>
-                <Typography variant="subtitle1" fontWeight="bold">History</Typography>
-                <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    <IconButton size="small" onClick={onNew} title="New">
-                        <AddIcon fontSize="small" />
+            <Box sx={{ px: 1.5, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    History
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 0.25 }}>
+                    <IconButton size="small" onClick={onNew} title="New" sx={{ width: 26, height: 26 }}>
+                        <AddIcon sx={{ fontSize: 16 }} />
                     </IconButton>
                     {items.length > 0 && (
-                        <IconButton size="small" onClick={handleClear} title="Clear All">
-                            <DeleteSweepIcon fontSize="small" />
+                        <IconButton size="small" onClick={handleClear} title="Clear All" sx={{ width: 26, height: 26 }}>
+                            <DeleteSweepIcon sx={{ fontSize: 16 }} />
                         </IconButton>
                     )}
                 </Box>
             </Box>
             <Divider />
-            <List dense sx={{ flex: 1, overflowY: 'auto' }}>
+            <List dense sx={{ flex: 1, overflowY: 'auto', px: 0.5, py: 0.5 }}>
                 {items.length === 0 ? (
                     <ListItem>
                         <ListItemText
                             primary="No history yet"
-                            sx={{ color: 'text.secondary', textAlign: 'center', mt: 2 }}
+                            sx={{ color: 'text.secondary', textAlign: 'center', mt: 4 }}
+                            primaryTypographyProps={{ variant: 'caption' }}
                         />
                     </ListItem>
                 ) : (
@@ -86,8 +94,19 @@ export default function HistorySidebar({ activeTool, activeSessionId, onSelect, 
                             key={item.id}
                             disablePadding
                             secondaryAction={
-                                <IconButton edge="end" aria-label="delete" size="small" onClick={() => onDelete(item.id)}>
-                                    <DeleteIcon fontSize="small" />
+                                <IconButton
+                                    edge="end"
+                                    aria-label="delete"
+                                    size="small"
+                                    onClick={() => onDelete(item.id)}
+                                    sx={{
+                                        width: 24, height: 24,
+                                        opacity: 0,
+                                        transition: 'opacity 0.15s',
+                                        '.MuiListItem-root:hover &': { opacity: 1 },
+                                    }}
+                                >
+                                    <DeleteIcon sx={{ fontSize: 14 }} />
                                 </IconButton>
                             }
                         >
@@ -95,18 +114,15 @@ export default function HistorySidebar({ activeTool, activeSessionId, onSelect, 
                                 selected={activeSessionId === item.id}
                                 onClick={() => onSelect(item.id)}
                                 sx={{
-                                    borderLeft: '3px solid transparent',
+                                    borderRadius: 1.5,
+                                    py: 0.75,
+                                    px: 1,
                                     '&.Mui-selected': {
-                                        bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
-                                        borderLeftColor: 'primary.main',
-                                        color: 'primary.main',
+                                        bgcolor: 'action.selected',
                                         '&:hover': {
-                                            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+                                            bgcolor: 'action.selected',
                                         },
-                                        '& .MuiListItemText-secondary': {
-                                            color: (theme) => alpha(theme.palette.primary.main, 0.8)
-                                        }
-                                    }
+                                    },
                                 }}
                             >
                                 <ListItemText
@@ -114,17 +130,19 @@ export default function HistorySidebar({ activeTool, activeSessionId, onSelect, 
                                     secondary={formatDate(item.timestamp)}
                                     primaryTypographyProps={{
                                         variant: 'body2',
-                                        style: {
+                                        sx: {
                                             whiteSpace: 'nowrap',
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',
-                                            fontFamily: 'monospace',
-                                            fontWeight: activeSessionId === item.id ? 600 : 400
+                                            fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+                                            fontSize: '0.7rem',
+                                            fontWeight: activeSessionId === item.id ? 600 : 400,
+                                            color: activeSessionId === item.id ? 'primary.main' : 'text.primary',
                                         }
                                     }}
                                     secondaryTypographyProps={{
                                         variant: 'caption',
-                                        style: { fontSize: '0.7rem' }
+                                        sx: { fontSize: '0.65rem', color: 'text.secondary' }
                                     }}
                                 />
                             </ListItemButton>

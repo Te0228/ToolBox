@@ -133,6 +133,12 @@ function App() {
             }
             setRefreshHistory(prev => prev + 1)
           }}
+          onClear={() => {
+            setActiveSessionId(null)
+            toolRefs.current[activeTool]?.clearContent()
+            setToolContents(prev => ({ ...prev, [activeTool]: '' }))
+            setRefreshHistory(prev => prev + 1)
+          }}
           refreshTrigger={refreshHistory}
         />
         <Box component="main" sx={{ flex: 1, overflow: 'hidden', position: 'relative', bgcolor: 'background.paper' }}>

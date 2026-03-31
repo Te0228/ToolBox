@@ -1,6 +1,6 @@
 import { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react'
 import Editor from '@monaco-editor/react'
-import { Box, Button, Stack, Paper, Typography, ToggleButtonGroup, ToggleButton } from '@mui/material'
+import { Box, Button, Stack, Paper, Typography } from '@mui/material'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import CodeIcon from '@mui/icons-material/Code'
 import ViewColumnIcon from '@mui/icons-material/ViewColumn'
@@ -33,18 +33,26 @@ const unescapeString = (str: string): string => {
     }
   }
 
-  // 手动处理所有 JSON 转义字符
-  return str
-    .replace(/\\n/g, '\n')       // 换行
-    .replace(/\\r/g, '\r')       // 回车
-    .replace(/\\t/g, '\t')       // 制表符
-    .replace(/\\b/g, '\b')       // 退格
-    .replace(/\\f/g, '\f')       // 换页
-    .replace(/\\"/g, '"')        // 双引号
-    .replace(/\\'/g, "'")        // 单引号
-    .replace(/\\\//g, '/')       // 斜杠
-    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))) // Unicode
-    .replace(/\\\\/g, '\\')      // 反斜杠（最后处理）
+  // 手动处理所有 JSON 转义字符（使用单次正则匹配避免顺序问题）
+  return str.replace(/\\(n|r|t|b|f|"|'|\/|\\|u[0-9a-fA-F]{4})/g, (match, seq) => {
+    switch (seq) {
+      case 'n': return '\n'
+      case 'r': return '\r'
+      case 't': return '\t'
+      case 'b': return '\b'
+      case 'f': return '\f'
+      case '"': return '"'
+      case "'": return "'"
+      case '/': return '/'
+      case '\\': return '\\'
+      default:
+        // Unicode escape: \uXXXX
+        if (seq.startsWith('u')) {
+          return String.fromCharCode(parseInt(seq.substring(1), 16))
+        }
+        return match
+    }
+  })
 }
 
 const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialContent }, ref) => {
@@ -129,23 +137,6 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
             })()
           });
 
-          // Extra safety: on macOS Electron, Cmd+V can be handled by the native menu layer,
-          // and Monaco keybindings may not fire reliably in some setups. Capture it here too.
-          editor.onKeyDown((e: any) => {
-            const isPaste = (e?.keyCode === monaco.KeyCode.KeyV) && (e?.metaKey || e?.ctrlKey)
-            if (!isPaste) return
-            e.preventDefault?.()
-            e.stopPropagation?.()
-            void (async () => {
-              const text = await readClipboardText()
-              if (typeof text !== 'string') {
-                await runDefaultPaste(editor)
-                return
-              }
-              insertTextAtSelections(editor, unescapeString(text))
-            })()
-          });
-
           // Focus editor on mount
           setTimeout(() => editor.focus(), 100);
         }}
@@ -167,12 +158,13 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
         '& h3': { fontSize: '1.25em', fontWeight: 'bold', mt: 1.5, mb: 0.75 },
         '& p': { mb: 1, lineHeight: 1.6 },
         '& code': {
-          bgcolor: 'rgba(0, 0, 0, 0.1)',
+          bgcolor: 'rgba(91,91,214,0.08)',
+          color: '#5B5BD6',
           px: 0.5,
           py: 0.25,
           borderRadius: 0.5,
-          fontFamily: 'monospace',
-          fontSize: '0.9em'
+          fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+          fontSize: '0.85em',
         },
         '& pre': { mb: 2, borderRadius: 1, overflow: 'auto' },
         '& ul, & ol': { pl: 3, mb: 1 },
@@ -235,54 +227,57 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
     </Box>
   )
 
+  const toolbarButtonSx = {
+    color: 'text.secondary',
+    fontSize: '0.75rem',
+    fontWeight: 500,
+    px: 1,
+    py: 0.25,
+    minWidth: 0,
+    '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
+  }
+
+  const viewButtonSx = (mode: ViewMode) => ({
+    ...toolbarButtonSx,
+    ...(viewMode === mode && { color: 'primary.main', bgcolor: 'action.selected' }),
+  })
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.default' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.paper' }}>
       <Box sx={{
         display: 'flex',
         justifyContent: 'space-between',
-        p: 1,
-        bgcolor: 'background.default',
-        borderBottom: 1,
-        borderColor: 'divider'
+        alignItems: 'center',
+        px: 1,
+        py: 0.5,
       }}>
-        <Stack direction="row" spacing={1}>
-          <ToggleButtonGroup
-            value={viewMode}
-            exclusive
-            onChange={(_, newMode) => newMode && setViewMode(newMode)}
-            size="small"
-          >
-            <ToggleButton value="edit">
-              <CodeIcon sx={{ mr: 0.5 }} fontSize="small" />
-              Edit
-            </ToggleButton>
-            <ToggleButton value="split">
-              <ViewColumnIcon sx={{ mr: 0.5 }} fontSize="small" />
-              Split
-            </ToggleButton>
-            <ToggleButton value="preview">
-              <VisibilityIcon sx={{ mr: 0.5 }} fontSize="small" />
-              Preview
-            </ToggleButton>
-          </ToggleButtonGroup>
+        <Stack direction="row" spacing={0.25}>
+          <Button onClick={() => setViewMode('edit')} size="small" sx={viewButtonSx('edit')} startIcon={<CodeIcon sx={{ fontSize: '16px !important' }} />}>
+            Edit
+          </Button>
+          <Button onClick={() => setViewMode('split')} size="small" sx={viewButtonSx('split')} startIcon={<ViewColumnIcon sx={{ fontSize: '16px !important' }} />}>
+            Split
+          </Button>
+          <Button onClick={() => setViewMode('preview')} size="small" sx={viewButtonSx('preview')} startIcon={<VisibilityIcon sx={{ fontSize: '16px !important' }} />}>
+            Preview
+          </Button>
         </Stack>
 
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={0.25}>
           <Button
-            variant="outlined"
-            startIcon={<AutoFixHighIcon />}
             onClick={handleUnescape}
             size="small"
-            title="将 JSON 字符串转换为 Markdown 格式（处理 \n, \t 等转义字符）"
+            sx={toolbarButtonSx}
+            startIcon={<AutoFixHighIcon sx={{ fontSize: '16px !important' }} />}
+            title="Unescape \n, \t etc."
           >
             Format
           </Button>
           <Button
-            variant="outlined"
-            startIcon={<ContentCopyIcon />}
             onClick={handleCopy}
             size="small"
-            color={copied ? 'success' : 'primary'}
+            sx={{ ...toolbarButtonSx, ...(copied && { color: 'success.main' }) }}
+            startIcon={<ContentCopyIcon sx={{ fontSize: '16px !important' }} />}
           >
             {copied ? 'Copied!' : 'Copy'}
           </Button>
@@ -311,24 +306,24 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          p: 0.5,
-          px: 2,
+          px: 1.5,
+          py: 0.25,
           bgcolor: 'background.default',
-          borderTop: 1,
+          borderTop: '1px solid',
           borderColor: 'divider',
-          height: 36
+          height: 32,
         }}
       >
-        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {content.trim() ? '✓ Markdown' : 'Ready'}
+        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: '"JetBrains Mono", "Fira Code", monospace', fontSize: '0.65rem' }}>
+          {content.trim() ? 'Markdown' : 'Ready'}
         </Typography>
 
         <Stack direction="row" spacing={2} alignItems="center">
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
             Lines: {content.split('\n').length}
           </Typography>
-          <Typography variant="caption" sx={{ minWidth: 100, textAlign: 'right', color: 'text.secondary' }}>
-            Characters: {content.length}
+          <Typography variant="caption" sx={{ minWidth: 80, textAlign: 'right', color: 'text.secondary', fontSize: '0.65rem' }}>
+            Chars: {content.length}
           </Typography>
         </Stack>
       </Paper>

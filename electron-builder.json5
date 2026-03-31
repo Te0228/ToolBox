@@ -16,9 +16,6 @@
     "output": "release",
     "buildResources": "build"
   },
-  "fileAssociations": [],
-  "protocols": [],
-  "extraFiles": [],
   "electronDownload": {
     "cache": "./.electron"
   },

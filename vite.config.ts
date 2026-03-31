@@ -15,7 +15,7 @@ export default defineConfig({
     port: 5173,
   },
   build: {
-    target: 'node18',
+    target: 'chrome120',
     minify: 'esbuild',
     rollupOptions: {
       output: {

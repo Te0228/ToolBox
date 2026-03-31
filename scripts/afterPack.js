@@ -34,22 +34,5 @@ exports.default = async function(context) {
     }
   }
 
-  // 清理开发相关的文件
-  const packagePath = path.join(appOutDir, 'app.asar', 'package.json');
-  if (fs.existsSync(packagePath)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
-      // 删除开发依赖
-      delete pkg.devDependencies;
-      // 删除不必要的脚本
-      delete pkg.scripts.preinstall;
-      delete pkg.scripts.postinstall;
-      fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2));
-      console.log('✓ Cleaned package.json');
-    } catch (e) {
-      console.error('Error cleaning package.json:', e);
-    }
-  }
-
   console.log(`✓ Package optimized for ${electronPlatformName}-${arch}`);
 };
