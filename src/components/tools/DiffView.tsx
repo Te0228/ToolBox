@@ -9,27 +9,20 @@ import { setupPasteHandler } from '../../utils/monacoClipboard'
 import { HistoryItem, historyService } from '../../utils/history'
 
 interface DiffViewProps {
-  /** Current editor content — placed on the right ("Current") side */
   currentContent: string
-  /** Monaco language id */
   language: string
-  /** Tool id for loading history items */
   toolId: string
-  /** Currently active session id (excluded from the dropdown) */
   activeSessionId: string | null
-  /** Called when user exits diff mode */
   onClose: () => void
-  /** Optional transform for paste (e.g. unescape for markdown) */
   pasteTransform?: (text: string) => string
 }
 
 export default function DiffView({ currentContent, language, toolId, activeSessionId, onClose, pasteTransform }: DiffViewProps) {
   const [original, setOriginal] = useState('')
   const [selectedHistoryId, setSelectedHistoryId] = useState<string>('')
-  const [mode, setMode] = useState<'edit' | 'diff'>('diff')
+  const [mode, setMode] = useState<'edit' | 'diff'>('edit')
   const originalEditorRef = useRef<any>(null)
 
-  // Get history items for the dropdown (exclude the current session)
   const historyItems = historyService.getHistory(toolId)
     .filter((item: HistoryItem) => item.id !== activeSessionId)
 
@@ -37,11 +30,13 @@ export default function DiffView({ currentContent, language, toolId, activeSessi
     setSelectedHistoryId(id)
     if (id === '') {
       setOriginal('')
+      setMode('edit')
       return
     }
     const item = historyService.getById(id)
     if (item) {
       setOriginal(item.content)
+      setMode('diff')
     }
   }
 
@@ -52,21 +47,19 @@ export default function DiffView({ currentContent, language, toolId, activeSessi
   }
 
   const handleSwap = () => {
-    const tmp = original
     setOriginal(currentContent)
-    void tmp
+    setSelectedHistoryId('')
   }
 
   const formatOriginal = () => {
-    if (language === 'json') {
-      try {
-        setOriginal(JSON.stringify(JSON.parse(original), null, 2))
-      } catch { /* ignore */ }
-    }
+    if (language !== 'json') return
+    try { setOriginal(JSON.stringify(JSON.parse(original), null, 2)) } catch { /* ignore */ }
   }
 
+  const btnSx = { minWidth: 0, px: 1.5, fontSize: '0.7rem' }
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
       {/* Toolbar */}
       <Box sx={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -77,83 +70,78 @@ export default function DiffView({ currentContent, language, toolId, activeSessi
           <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Compare
           </Typography>
+
+          {/* History selector — always visible */}
+          {historyItems.length > 0 && (
+            <Select
+              value={selectedHistoryId}
+              onChange={(e) => handleHistorySelect(e.target.value)}
+              variant="standard"
+              displayEmpty
+              disableUnderline
+              sx={{ fontSize: '0.7rem', maxWidth: 200 }}
+              renderValue={(v) => {
+                if (!v) return <Typography variant="caption" sx={{ color: 'text.secondary' }}>Select version...</Typography>
+                const item = historyItems.find((h: HistoryItem) => h.id === v)
+                return item ? <Typography variant="caption" noWrap>{getHistoryLabel(item)}</Typography> : ''
+              }}
+            >
+              <MenuItem value="" sx={{ fontSize: '0.75rem' }}><em>Manual input</em></MenuItem>
+              {historyItems.map((item: HistoryItem) => (
+                <MenuItem key={item.id} value={item.id} sx={{ fontSize: '0.75rem' }}>
+                  <Typography variant="caption" noWrap sx={{ maxWidth: 200 }}>
+                    {getHistoryLabel(item)}
+                  </Typography>
+                </MenuItem>
+              ))}
+            </Select>
+          )}
+
           <Stack direction="row" spacing={0.5}>
-            <Button size="small" variant={mode === 'edit' ? 'contained' : 'outlined'} onClick={() => setMode('edit')}
-              sx={{ minWidth: 0, px: 1.5, fontSize: '0.7rem' }}>
+            <Button size="small" variant={mode === 'edit' ? 'contained' : 'outlined'} onClick={() => setMode('edit')} sx={btnSx}>
               Edit
             </Button>
-            <Button size="small" variant={mode === 'diff' ? 'contained' : 'outlined'} onClick={() => setMode('diff')}
-              sx={{ minWidth: 0, px: 1.5, fontSize: '0.7rem' }}>
+            <Button size="small" variant={mode === 'diff' ? 'contained' : 'outlined'} onClick={() => setMode('diff')} sx={btnSx}>
               Diff
             </Button>
           </Stack>
+
           {mode === 'edit' && language === 'json' && (
-            <Button size="small" variant="outlined" onClick={formatOriginal}
-              sx={{ minWidth: 0, px: 1.5, fontSize: '0.7rem' }}>
-              Format
-            </Button>
+            <Button size="small" variant="outlined" onClick={formatOriginal} sx={btnSx}>Format</Button>
           )}
-          <Button size="small" variant="outlined" startIcon={<SwapHorizIcon sx={{ fontSize: '14px !important' }} />}
-            onClick={handleSwap} sx={{ minWidth: 0, px: 1.5, fontSize: '0.7rem' }}>
+          <Button size="small" variant="outlined" startIcon={<SwapHorizIcon sx={{ fontSize: '14px !important' }} />} onClick={handleSwap} sx={btnSx}>
             Swap
           </Button>
         </Stack>
-        <Button size="small" variant="outlined" startIcon={<CloseIcon sx={{ fontSize: '14px !important' }} />}
-          onClick={onClose} sx={{ minWidth: 0, px: 1.5, fontSize: '0.7rem' }}>
+
+        <Button size="small" variant="outlined" startIcon={<CloseIcon sx={{ fontSize: '14px !important' }} />} onClick={onClose} sx={btnSx}>
           Close
         </Button>
       </Box>
 
-      {/* Content area */}
-      <Box sx={{ flex: 1, minHeight: 0, display: 'flex' }}>
+      {/* Content */}
+      <Box sx={{ flex: 1, minHeight: 0, display: 'flex', width: '100%' }}>
         {mode === 'diff' ? (
-          <DiffEditor
-            height="100%"
-            language={language}
-            original={original}
-            modified={currentContent}
-            theme="vs"
-            options={{
-              ...baseEditorOptions,
-              readOnly: true,
-              renderSideBySide: true,
-              originalEditable: false,
-            }}
-          />
+          <Box sx={{ flex: 1, minHeight: 0 }}>
+            <DiffEditor
+              height="100%"
+              language={language}
+              original={original}
+              modified={currentContent}
+              theme="vs"
+              options={{
+                ...baseEditorOptions,
+                readOnly: true,
+                renderSideBySide: true,
+                originalEditable: false,
+              }}
+            />
+          </Box>
         ) : (
           <>
-            {/* Left: Original */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: 1, borderColor: 'divider' }}>
-              <Box sx={{
-                px: 1, py: 0.5, bgcolor: 'background.default',
-                borderBottom: 1, borderColor: 'divider',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              }}>
+              <Box sx={{ px: 1, py: 0.5, bgcolor: 'background.default', borderBottom: 1, borderColor: 'divider' }}>
                 <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>Original</Typography>
-                {historyItems.length > 0 && (
-                  <Select
-                    value={selectedHistoryId}
-                    onChange={(e) => handleHistorySelect(e.target.value)}
-                    variant="standard"
-                    displayEmpty
-                    disableUnderline
-                    sx={{ fontSize: '0.7rem', maxWidth: 180 }}
-                    renderValue={(v) => {
-                      if (!v) return <Typography variant="caption" sx={{ color: 'text.secondary' }}>Select from history...</Typography>
-                      const item = historyItems.find((h: HistoryItem) => h.id === v)
-                      return item ? <Typography variant="caption" noWrap>{getHistoryLabel(item)}</Typography> : ''
-                    }}
-                  >
-                    <MenuItem value="" sx={{ fontSize: '0.75rem' }}><em>Manual input</em></MenuItem>
-                    {historyItems.map((item: HistoryItem) => (
-                      <MenuItem key={item.id} value={item.id} sx={{ fontSize: '0.75rem' }}>
-                        <Typography variant="caption" noWrap sx={{ maxWidth: 200 }}>
-                          {getHistoryLabel(item)}
-                        </Typography>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                )}
               </Box>
               <Box sx={{ flex: 1, minHeight: 0 }}>
                 <Editor
@@ -170,7 +158,6 @@ export default function DiffView({ currentContent, language, toolId, activeSessi
                 />
               </Box>
             </Box>
-            {/* Right: Current (read-only) */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ px: 1, py: 0.5, bgcolor: 'background.default', borderBottom: 1, borderColor: 'divider' }}>
                 <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>Current</Typography>
@@ -196,10 +183,8 @@ export default function DiffView({ currentContent, language, toolId, activeSessi
       }}>
         <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
           {mode === 'diff'
-            ? 'Diff view (read-only)'
-            : original
-              ? 'Comparing — switch to Diff view to see highlighted changes'
-              : 'Select a history version or paste content on the left'}
+            ? original ? 'Diff view (read-only)' : 'Select a history version or switch to Edit to paste content'
+            : original ? 'Switch to Diff to see highlighted changes' : 'Select a version above or paste content on the left'}
         </Typography>
       </Paper>
     </Box>
