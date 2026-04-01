@@ -4,6 +4,7 @@ import Toolbar, { Tool } from './components/Toolbar'
 import HistorySidebar from './components/HistorySidebar'
 import JsonEditor from './components/tools/JsonEditor'
 import MarkdownEditor from './components/tools/MarkdownEditor'
+import JsonDiff from './components/tools/JsonDiff'
 import { historyService } from './utils/history'
 import { ToolHandle } from './types/tool'
 
@@ -15,11 +16,13 @@ function App() {
   const toolRefs = useRef<Record<Tool, ToolHandle | null>>({
     'json-editor': null,
     'markdown-editor': null,
+    'json-diff': null,
   })
 
   const [toolContents, setToolContents] = useState<Record<Tool, string>>({
     'json-editor': '',
     'markdown-editor': '',
+    'json-diff': '',
   })
 
   /** Save the current editor content into history (create or update). */
@@ -79,6 +82,7 @@ function App() {
 
   const jsonEditorRef = useCallback((ref: ToolHandle | null) => { toolRefs.current['json-editor'] = ref }, [])
   const markdownEditorRef = useCallback((ref: ToolHandle | null) => { toolRefs.current['markdown-editor'] = ref }, [])
+  const jsonDiffRef = useCallback((ref: ToolHandle | null) => { toolRefs.current['json-diff'] = ref }, [])
 
   const renderAllTools = () => {
     const tools: Array<{ id: Tool; component: JSX.Element }> = [
@@ -97,6 +101,15 @@ function App() {
           <MarkdownEditor
             initialContent={toolContents['markdown-editor']}
             ref={markdownEditorRef}
+          />
+        )
+      },
+      {
+        id: 'json-diff',
+        component: (
+          <JsonDiff
+            initialContent={toolContents['json-diff']}
+            ref={jsonDiffRef}
           />
         )
       },

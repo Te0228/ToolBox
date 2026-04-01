@@ -105,6 +105,13 @@ class HistoryService {
     this.save()
   }
 
+  rename(id: string, summary: string) {
+    const item = this.history.find(h => h.id === id)
+    if (!item) return
+    item.summary = summary || undefined
+    this.save()
+  }
+
   delete(id: string) {
     this.history = this.history.filter(item => item.id !== id)
     this.save()

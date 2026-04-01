@@ -2,8 +2,9 @@ import { AppBar, Toolbar as MuiToolbar, Typography, Button, Box } from '@mui/mat
 import EditNoteIcon from '@mui/icons-material/EditNote'
 import HandymanIcon from '@mui/icons-material/Handyman'
 import DescriptionIcon from '@mui/icons-material/Description'
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
 
-export type Tool = 'json-editor' | 'markdown-editor'
+export type Tool = 'json-editor' | 'markdown-editor' | 'json-diff'
 
 interface ToolbarProps {
   activeTool: Tool
@@ -13,6 +14,7 @@ interface ToolbarProps {
 const tools = [
   { id: 'json-editor' as Tool, name: 'JSON', icon: <EditNoteIcon sx={{ fontSize: 18 }} /> },
   { id: 'markdown-editor' as Tool, name: 'Markdown', icon: <DescriptionIcon sx={{ fontSize: 18 }} /> },
+  { id: 'json-diff' as Tool, name: 'JSON Diff', icon: <CompareArrowsIcon sx={{ fontSize: 18 }} /> },
 ]
 
 export default function Toolbar({ activeTool, onToolChange }: ToolbarProps) {

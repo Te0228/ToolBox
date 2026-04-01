@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import {
     Drawer, Box, Typography, List, ListItem, ListItemText,
-    IconButton, Divider, ListItemButton
+    IconButton, Divider, ListItemButton, TextField
 } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
@@ -23,10 +23,20 @@ const drawerWidth = 240
 
 export default function HistorySidebar({ activeTool, activeSessionId, onSelect, onNew, onDelete, onClear, refreshTrigger }: HistorySidebarProps) {
     const [items, setItems] = useState<HistoryItem[]>([])
+    const [editingId, setEditingId] = useState<string | null>(null)
+    const [editValue, setEditValue] = useState('')
+    const inputRef = useRef<HTMLInputElement>(null)
 
     useEffect(() => {
         setItems(historyService.getHistory(activeTool))
     }, [activeTool, refreshTrigger])
+
+    // Auto-focus input when entering edit mode
+    useEffect(() => {
+        if (editingId) {
+            setTimeout(() => inputRef.current?.focus(), 0)
+        }
+    }, [editingId])
 
     const handleClear = () => {
         if (confirm('Clear all history for this tool?')) {
@@ -36,11 +46,31 @@ export default function HistorySidebar({ activeTool, activeSessionId, onSelect, 
         }
     }
 
+    const startRename = (item: HistoryItem) => {
+        setEditingId(item.id)
+        setEditValue(item.summary || '')
+    }
+
+    const commitRename = () => {
+        if (editingId) {
+            historyService.rename(editingId, editValue.trim())
+            setItems(historyService.getHistory(activeTool))
+            setEditingId(null)
+        }
+    }
+
+    const cancelRename = () => {
+        setEditingId(null)
+    }
+
     const formatDate = (timestamp: number) => {
         return new Date(timestamp).toLocaleString(undefined, {
             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
         })
     }
+
+    const getDisplayName = (item: HistoryItem) =>
+        item.summary || (item.content.slice(0, 30) + (item.content.length > 30 ? '...' : ''))
 
     return (
         <Drawer
@@ -116,32 +146,62 @@ export default function HistorySidebar({ activeTool, activeSessionId, onSelect, 
                                     px: 1,
                                     '&.Mui-selected': {
                                         bgcolor: 'action.selected',
-                                        '&:hover': {
-                                            bgcolor: 'action.selected',
-                                        },
+                                        '&:hover': { bgcolor: 'action.selected' },
                                     },
                                 }}
                             >
-                                <ListItemText
-                                    primary={item.summary || (item.content.slice(0, 30) + (item.content.length > 30 ? '...' : ''))}
-                                    secondary={formatDate(item.timestamp)}
-                                    primaryTypographyProps={{
-                                        variant: 'body2',
-                                        sx: {
-                                            whiteSpace: 'nowrap',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-                                            fontSize: '0.7rem',
-                                            fontWeight: activeSessionId === item.id ? 600 : 400,
-                                            color: activeSessionId === item.id ? 'primary.main' : 'text.primary',
-                                        }
-                                    }}
-                                    secondaryTypographyProps={{
-                                        variant: 'caption',
-                                        sx: { fontSize: '0.65rem', color: 'text.secondary' }
-                                    }}
-                                />
+                                {editingId === item.id ? (
+                                    <TextField
+                                        inputRef={inputRef}
+                                        value={editValue}
+                                        onChange={(e) => setEditValue(e.target.value)}
+                                        onBlur={commitRename}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') commitRename()
+                                            if (e.key === 'Escape') cancelRename()
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        variant="standard"
+                                        size="small"
+                                        fullWidth
+                                        placeholder="Enter name..."
+                                        autoComplete="off"
+                                        InputProps={{
+                                            disableUnderline: true,
+                                            sx: {
+                                                fontSize: '0.7rem',
+                                                fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+                                                py: 0,
+                                            }
+                                        }}
+                                        sx={{ my: -0.25 }}
+                                    />
+                                ) : (
+                                    <ListItemText
+                                        primary={getDisplayName(item)}
+                                        secondary={formatDate(item.timestamp)}
+                                        onDoubleClick={(e) => {
+                                            e.stopPropagation()
+                                            startRename(item)
+                                        }}
+                                        primaryTypographyProps={{
+                                            variant: 'body2',
+                                            sx: {
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+                                                fontSize: '0.7rem',
+                                                fontWeight: activeSessionId === item.id ? 600 : 400,
+                                                color: activeSessionId === item.id ? 'primary.main' : 'text.primary',
+                                            }
+                                        }}
+                                        secondaryTypographyProps={{
+                                            variant: 'caption',
+                                            sx: { fontSize: '0.65rem', color: 'text.secondary' }
+                                        }}
+                                    />
+                                )}
                             </ListItemButton>
                         </ListItem>
                     ))
