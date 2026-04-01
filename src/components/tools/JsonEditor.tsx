@@ -19,9 +19,10 @@ import JsonMarkdownPreview from './JsonMarkdownPreview'
 
 interface JsonEditorProps {
   initialContent?: string | null
+  activeSessionId?: string | null
 }
 
-const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, ref) => {
+const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent, activeSessionId }, ref) => {
   const [content, setContent] = useState(initialContent || '')
   const [error, setError] = useState<string | null>(null)
   const [indentSize, setIndentSize] = useState(2)
@@ -355,7 +356,7 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
 
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
         {showDiff ? (
-          <DiffView language="json" currentContent={content} onClose={() => setShowDiff(false)} />
+          <DiffView language="json" toolId="json-editor" activeSessionId={activeSessionId ?? null} currentContent={content} onClose={() => setShowDiff(false)} />
         ) : !showMarkdown ? (
           <Box sx={{ flex: 1, minHeight: 0 }}>
             <Editor

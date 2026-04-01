@@ -87,6 +87,7 @@ function App() {
         component: (
           <JsonEditor
             initialContent={toolContents['json-editor']}
+            activeSessionId={activeSessionId}
             ref={jsonEditorRef}
           />
         )
@@ -96,6 +97,7 @@ function App() {
         component: (
           <MarkdownEditor
             initialContent={toolContents['markdown-editor']}
+            activeSessionId={activeSessionId}
             ref={markdownEditorRef}
           />
         )

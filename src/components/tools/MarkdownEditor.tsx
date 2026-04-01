@@ -19,11 +19,12 @@ import { baseEditorOptions } from '../../utils/editorConfig'
 
 interface MarkdownEditorProps {
   initialContent?: string | null
+  activeSessionId?: string | null
 }
 
 type ViewMode = 'edit' | 'preview' | 'split'
 
-const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialContent }, ref) => {
+const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialContent, activeSessionId }, ref) => {
   const [content, setContent] = useState(initialContent || '')
   const [viewMode, setViewMode] = useState<ViewMode>('split')
   const [copied, setCopied] = useState(false)
@@ -242,7 +243,7 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
 
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
         {showDiff ? (
-          <DiffView language="markdown" currentContent={content} onClose={() => setShowDiff(false)} pasteTransform={unescapeJsonString} />
+          <DiffView language="markdown" toolId="markdown-editor" activeSessionId={activeSessionId ?? null} currentContent={content} onClose={() => setShowDiff(false)} pasteTransform={unescapeJsonString} />
         ) : viewMode === 'edit' ? renderEditor()
           : viewMode === 'preview' ? renderPreview()
           : (
