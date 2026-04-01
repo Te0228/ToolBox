@@ -7,6 +7,8 @@ import PreviewIcon from '@mui/icons-material/Preview'
 import CodeIcon from '@mui/icons-material/Code'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
 import LockIcon from '@mui/icons-material/Lock'
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
+import DiffView from './DiffView'
 import { ToolHandle } from '../../types/tool'
 import { setupPasteHandler } from '../../utils/monacoClipboard'
 import { baseEditorOptions } from '../../utils/editorConfig'
@@ -25,6 +27,7 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
   const [indentSize, setIndentSize] = useState(2)
   const [isValidating, setIsValidating] = useState(false)
   const [showMarkdown, setShowMarkdown] = useState(false)
+  const [showDiff, setShowDiff] = useState(false)
   const [parsedJson, setParsedJson] = useState<any>(null)
   const editorInstanceRef = useRef<any>(null)
   const monacoRef = useRef<any>(null)
@@ -324,21 +327,36 @@ const JsonEditor = forwardRef<ToolHandle, JsonEditorProps>(({ initialContent }, 
           </Button>
         </Stack>
 
-        <Button
-          onClick={() => setShowMarkdown(!showMarkdown)}
-          size="small"
-          sx={{
-            ...toolbarButtonSx,
-            ...(showMarkdown && { color: 'primary.main', bgcolor: 'action.selected' }),
-          }}
-          startIcon={showMarkdown ? <CodeIcon sx={{ fontSize: '16px !important' }} /> : <PreviewIcon sx={{ fontSize: '16px !important' }} />}
-        >
-          {showMarkdown ? 'Code' : 'Preview'}
-        </Button>
+        <Stack direction="row" spacing={0.25}>
+          <Button
+            onClick={() => { setShowDiff(!showDiff); setShowMarkdown(false) }}
+            size="small"
+            sx={{
+              ...toolbarButtonSx,
+              ...(showDiff && { color: 'primary.main', bgcolor: 'action.selected' }),
+            }}
+            startIcon={<CompareArrowsIcon sx={{ fontSize: '16px !important' }} />}
+          >
+            Compare
+          </Button>
+          <Button
+            onClick={() => { setShowMarkdown(!showMarkdown); setShowDiff(false) }}
+            size="small"
+            sx={{
+              ...toolbarButtonSx,
+              ...(showMarkdown && { color: 'primary.main', bgcolor: 'action.selected' }),
+            }}
+            startIcon={showMarkdown ? <CodeIcon sx={{ fontSize: '16px !important' }} /> : <PreviewIcon sx={{ fontSize: '16px !important' }} />}
+          >
+            {showMarkdown ? 'Code' : 'Preview'}
+          </Button>
+        </Stack>
       </Box>
 
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
-        {!showMarkdown ? (
+        {showDiff ? (
+          <DiffView language="json" currentContent={content} onClose={() => setShowDiff(false)} />
+        ) : !showMarkdown ? (
           <Box sx={{ flex: 1, minHeight: 0 }}>
             <Editor
               height="100%"

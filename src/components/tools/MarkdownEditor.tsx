@@ -6,6 +6,8 @@ import CodeIcon from '@mui/icons-material/Code'
 import ViewColumnIcon from '@mui/icons-material/ViewColumn'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
+import DiffView from './DiffView'
 import { ToolHandle } from '../../types/tool'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -25,6 +27,7 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
   const [content, setContent] = useState(initialContent || '')
   const [viewMode, setViewMode] = useState<ViewMode>('split')
   const [copied, setCopied] = useState(false)
+  const [showDiff, setShowDiff] = useState(false)
   const editorRef = useRef<any>(null)
 
   useImperativeHandle(ref, () => ({
@@ -223,13 +226,26 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
           >
             {copied ? 'Copied!' : 'Copy'}
           </Button>
+          <Button
+            onClick={() => setShowDiff(!showDiff)}
+            size="small"
+            sx={{
+              ...toolbarButtonSx,
+              ...(showDiff && { color: 'primary.main', bgcolor: 'action.selected' }),
+            }}
+            startIcon={<CompareArrowsIcon sx={{ fontSize: '16px !important' }} />}
+          >
+            Compare
+          </Button>
         </Stack>
       </Box>
 
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
-        {viewMode === 'edit' && renderEditor()}
-        {viewMode === 'preview' && renderPreview()}
-        {viewMode === 'split' && (
+        {showDiff ? (
+          <DiffView language="markdown" currentContent={content} onClose={() => setShowDiff(false)} pasteTransform={unescapeJsonString} />
+        ) : viewMode === 'edit' ? renderEditor()
+          : viewMode === 'preview' ? renderPreview()
+          : (
           <>
             <Box sx={{ flex: 1, minHeight: 0, borderRight: 1, borderColor: 'divider' }}>
               {renderEditor()}
