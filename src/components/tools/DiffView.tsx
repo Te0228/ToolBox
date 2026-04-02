@@ -24,7 +24,6 @@ export default function DiffView({ currentContent, language, toolId, activeSessi
   const originalEditorRef = useRef<any>(null)
 
   const historyItems = historyService.getHistory(toolId)
-    .filter((item: HistoryItem) => item.id !== activeSessionId)
 
   const handleHistorySelect = (id: string) => {
     setSelectedHistoryId(id)
@@ -59,7 +58,7 @@ export default function DiffView({ currentContent, language, toolId, activeSessi
   const btnSx = { minWidth: 0, px: 1.5, fontSize: '0.7rem' }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {/* Toolbar */}
       <Box sx={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -82,18 +81,22 @@ export default function DiffView({ currentContent, language, toolId, activeSessi
               sx={{ fontSize: '0.7rem', maxWidth: 200 }}
               renderValue={(v) => {
                 if (!v) return <Typography variant="caption" sx={{ color: 'text.secondary' }}>Select version...</Typography>
-                const item = historyItems.find((h: HistoryItem) => h.id === v)
-                return item ? <Typography variant="caption" noWrap>{getHistoryLabel(item)}</Typography> : ''
+                const idx = historyItems.findIndex((h: HistoryItem) => h.id === v)
+                const item = idx >= 0 ? historyItems[idx] : null
+                return item ? <Typography variant="caption" noWrap>#{idx + 1} {getHistoryLabel(item)}</Typography> : ''
               }}
             >
               <MenuItem value="" sx={{ fontSize: '0.75rem' }}><em>Manual input</em></MenuItem>
-              {historyItems.map((item: HistoryItem) => (
-                <MenuItem key={item.id} value={item.id} sx={{ fontSize: '0.75rem' }}>
-                  <Typography variant="caption" noWrap sx={{ maxWidth: 200 }}>
-                    {getHistoryLabel(item)}
-                  </Typography>
-                </MenuItem>
-              ))}
+              {historyItems.map((item: HistoryItem, index: number) => {
+                const isCurrent = item.id === activeSessionId
+                return (
+                  <MenuItem key={item.id} value={item.id} disabled={isCurrent} sx={{ fontSize: '0.75rem' }}>
+                    <Typography variant="caption" noWrap sx={{ maxWidth: 200, color: isCurrent ? 'text.disabled' : 'inherit' }}>
+                      #{index + 1} {getHistoryLabel(item)}{isCurrent ? ' (current)' : ''}
+                    </Typography>
+                  </MenuItem>
+                )
+              })}
             </Select>
           )}
 

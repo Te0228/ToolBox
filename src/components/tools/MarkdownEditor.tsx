@@ -103,48 +103,6 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
     ...(viewMode === mode && !showDiff && { color: 'primary.main', bgcolor: 'action.selected' }),
   })
 
-  // ---- Sub-renders ----
-
-  const editorPane = (
-    <Box sx={{ flex: 1, minHeight: 0, height: '100%' }}>
-      <Editor
-        height="100%"
-        defaultLanguage="markdown"
-        value={content}
-        onChange={(v) => setContent(v || '')}
-        options={{ ...editorOptions, contextmenu: true }}
-        theme="vs"
-        onMount={(editor, monaco) => {
-          editorRef.current = editor
-          setupPasteHandler(editor, monaco, unescapeJsonString)
-          setTimeout(() => editor.focus(), 100)
-        }}
-      />
-    </Box>
-  )
-
-  const previewPane = (
-    <Box sx={{ flex: 1, minHeight: 0, height: '100%', overflow: 'auto', p: 3, bgcolor: 'background.paper', ...markdownStyles }}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          code({ node, inline, className, children, ...props }: any) {
-            const match = /language-(\w+)/.exec(className || '')
-            return !inline && match ? (
-              <SyntaxHighlighter style={vscDarkPlus} language={match[1]} PreTag="div" {...props}>
-                {String(children).replace(/\n$/, '')}
-              </SyntaxHighlighter>
-            ) : (
-              <code className={className} {...props}>{children}</code>
-            )
-          }
-        }}
-      >
-        {content || '*No content to preview*'}
-      </ReactMarkdown>
-    </Box>
-  )
-
   // ---- Main layout ----
 
   return (
@@ -192,18 +150,52 @@ const MarkdownEditor = forwardRef<ToolHandle, MarkdownEditorProps>(({ initialCon
             onClose={() => setShowDiff(false)}
             pasteTransform={unescapeJsonString}
           />
-        ) : viewMode === 'edit' ? (
-          editorPane
-        ) : viewMode === 'preview' ? (
-          previewPane
         ) : (
-          /* split */
           <>
-            <Box sx={{ flex: 1, minHeight: 0, borderRight: 1, borderColor: 'divider' }}>
-              {editorPane}
+            {/* Editor pane — always mounted to preserve Monaco state across mode switches */}
+            <Box sx={{
+              flex: 1, minHeight: 0,
+              display: viewMode === 'preview' ? 'none' : undefined,
+              ...(viewMode === 'split' && { borderRight: 1, borderColor: 'divider' }),
+            }}>
+              <Editor
+                height="100%"
+                defaultLanguage="markdown"
+                value={content}
+                onChange={(v) => setContent(v || '')}
+                options={{ ...editorOptions, contextmenu: true }}
+                theme="vs"
+                onMount={(editor, monaco) => {
+                  editorRef.current = editor
+                  setupPasteHandler(editor, monaco, unescapeJsonString)
+                  setTimeout(() => editor.focus(), 100)
+                }}
+              />
             </Box>
-            <Box sx={{ flex: 1, minHeight: 0 }}>
-              {previewPane}
+            {/* Preview pane — always mounted; hidden in edit mode */}
+            <Box sx={{
+              flex: 1, minHeight: 0,
+              display: viewMode === 'edit' ? 'none' : undefined,
+              overflow: 'auto', p: 3, bgcolor: 'background.paper',
+              ...markdownStyles,
+            }}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  code({ node, inline, className, children, ...props }: any) {
+                    const match = /language-(\w+)/.exec(className || '')
+                    return !inline && match ? (
+                      <SyntaxHighlighter style={vscDarkPlus} language={match[1]} PreTag="div" {...props}>
+                        {String(children).replace(/\n$/, '')}
+                      </SyntaxHighlighter>
+                    ) : (
+                      <code className={className} {...props}>{children}</code>
+                    )
+                  }
+                }}
+              >
+                {content || '*No content to preview*'}
+              </ReactMarkdown>
             </Box>
           </>
         )}
